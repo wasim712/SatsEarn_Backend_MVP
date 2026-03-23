@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// --- ENUMS ---
+// Using native enums saves database space compared to storing strings
+enum Role {
+  USER
+  SUPER_ADMIN
+}
+
+enum Tier {
+  BASIC
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum TaskCategory {
+  SOCIAL
+  SURVEY
+  VIDEO_AD
+  APP_INSTALL
+  OFFERWALL
+  LEARN_EARN
+  DAILY_STREAK
+}
+
+enum SubmissionStatus {
+  PENDING_24H      // AI verified, waiting for 24-hour re-check
+  LOCKED_15D       // Re-verified, sitting in 15-day security hold
+  WITHDRAWABLE     // 15 days passed, funds are available
+  MANUAL_REVIEW    // AI flagged it (score 70-89)
+  REJECTED         // Auto-rejected (score <70) or Admin rejected
+}
+
+// --- MODELS ---
+
+model User {
+  id               String   @id @default(uuid())
+  // Links directly to Supabase's native auth.users table (Free Tier)
+  supabaseAuthId   String   @unique 
+  email            String   @unique
+  phone            String?  @unique
+  role             Role     @default(USER)
+  
+  // Basic KYC
+  fullName         String?
+  country          String?  // Locked after signup
+  dateOfBirth      DateTime?
+  
+  // Balances (Stored as Integers representing Sats to avoid floating point math errors)
+  balanceAvailable Int      @default(0)
+  balancePending   Int      @default(0)
+  balanceLocked    Int      @default(0)
+
+  // Gamification & Stats
+  tier             Tier     @default(BASIC)
+  xp               Int      @default(0)
+  level            Int      @default(0)
+  currentStreak    Int      @default(0)
+  lastActivityAt   DateTime @default(now())
+  
+  // Connected Social Accounts (Phase 1: Usernames only, no OAuth tokens)
+  twitterHandle    String?
+  instagramHandle  String?
+  telegramHandle   String?
+  discordHandle    String?
+
+  // Referral System (5% Commission Logic)
+  referralCode     String   @unique
+  referredById     String?
+  referredBy       User?    @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals        User[]   @relation("UserReferrals")
+
+  // Relations
+  submissions      Submission[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Campaign {
+  id                 String       @id @default(uuid())
+  title              String
+  description        String
+  category           TaskCategory
+  
+  // Targeting Details
+  targetUrl          String?
+  socialHandleTarget String?      // e.g., the exact Twitter handle they need to follow
+  targetCountries    String[]     // Empty array = global
+  requiredTier       Tier         @default(BASIC)
+  
+  // Economics
+  rewardSats         Int
+  totalCompletions   Int          @default(0)
+  maxCompletions     Int          // Caps the campaign budget
+  
+  isActive           Boolean      @default(true)
+  
+  tasks              Task[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  campaignId  String
+  campaign    Campaign     @relation(fields: [campaignId], references: [id])
+  
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+}
+
+model Submission {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  taskId           String
+  task             Task             @relation(fields: [taskId], references: [id])
+  
+  // Verification Pipeline Storage
+  screenshotUrl    String           // URL to Cloudflare R2 (Free Tier)
+  imageHash        String           // pHash string for free local duplicate detection
+  ocrExtractedText String?          @db.Text // Text dumped from GCP Vision
+  
+  // AI Decision Engine
+  confidenceScore  Int              @default(0)
+  metadataValid    Boolean          @default(true)
+  status           SubmissionStatus @default(PENDING_24H)
+  rejectionReason  String?
+  
+  // Hold & Lock Timestamps
+  submittedAt      DateTime         @default(now())
+  reverifyAt       DateTime?        // Scheduled time for 24-hour background job
+  unlockAt         DateTime?        // Scheduled time for 15-day release
+  
+  // Ensure a user can only submit a specific task once
+  @@unique([userId, taskId])
+}
