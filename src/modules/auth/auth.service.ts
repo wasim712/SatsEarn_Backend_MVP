@@ -88,4 +88,32 @@ export class AuthService {
 
     return { session: data.session, user: dbUser };
   }
+  // Add these inside your AuthService class
+
+  static async requestPasswordReset(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw new Error(error.message);
+    return { message: "Password reset OTP sent to email." };
+  }
+
+  static async resetPassword(email: string, token: string, newPassword: string) {
+    // 1. Verify the recovery OTP
+    const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'recovery',
+    });
+
+    if (verifyError) throw new Error(verifyError.message);
+    if (!verifyData.user) throw new Error("Verification failed");
+
+    // 2. Update the user's password using the Supabase Admin API
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      verifyData.user.id,
+      { password: newPassword }
+    );
+
+    if (updateError) throw new Error(updateError.message);
+    return { message: "Password updated successfully." };
+  }
 }

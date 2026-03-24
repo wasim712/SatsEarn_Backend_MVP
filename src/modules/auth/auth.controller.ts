@@ -30,4 +30,25 @@ export class AuthController {
       res.status(401).json({ error: error.message });
     }
   }
+
+  // Add these inside your AuthController class
+
+  static async requestPasswordReset(req: Request, res: Response) {
+    try {
+      const result = await AuthService.requestPasswordReset(req.body.email);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response) {
+    try {
+      const { email, token, newPassword } = req.body;
+      const result = await AuthService.resetPassword(email, token, newPassword);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
 }
