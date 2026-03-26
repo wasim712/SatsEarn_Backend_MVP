@@ -60,9 +60,6 @@ export class AdminService {
         requiredTier: data.requiredTier,
         
         // This automatically creates 1 default task associated with this campaign
-        tasks: {
-          create: [{}] 
-        }
       },
       // Include the created tasks in the response so we can see the generated Task ID
       include: {
@@ -171,6 +168,101 @@ export class AdminService {
 
     // 2. Now that the children are gone, it is safe to delete the parent campaign
     return await prisma.campaign.delete({
+      where: { id }
+    });
+  }
+
+
+
+  // --- TASK MANAGEMENT ---
+
+  static async addTaskToCampaign(campaignId: string, data: any) {
+    // 1. Ensure the parent campaign exists
+    const campaign = await this.getCampaignById(campaignId);
+
+    // 2. Create the child task
+    return await prisma.task.create({
+      data: {
+        campaignId: campaign.id,
+        title: data.title,
+        description: data.description,
+        targetUrl: data.targetUrl,
+        // If no specific reward is set for this task, it inherits the campaign's reward (if your schema supports this logic)
+      }
+    });
+  }
+  // GET ALL TASKS FOR A CAMPAIGN
+  static async getAllTasksForCampaign(campaignId: string) {
+    // Verify campaign exists first
+    await this.getCampaignById(campaignId); 
+    
+    return await prisma.task.findMany({
+      where: { campaignId },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
+
+  // GET A SINGLE TASK
+  static async getTaskById(campaignId: string, taskId: string) {
+    const task = await prisma.task.findFirst({
+      where: { 
+        id: taskId,
+        campaignId: campaignId 
+      }
+    });
+    
+    if (!task) throw new Error("Task not found in this campaign");
+    return task;
+  }
+
+  // UPDATE A TASK
+  static async updateTask(campaignId: string, taskId: string, data: any) {
+    // Verify it exists and belongs to this campaign before updating
+    await this.getTaskById(campaignId, taskId);
+
+    return await prisma.task.update({
+      where: { id: taskId },
+      data
+    });
+  }
+
+  // DELETE A TASK
+  static async deleteTask(campaignId: string, taskId: string) {
+    await this.getTaskById(campaignId, taskId);
+
+    // 1. Delete any user submissions attached to this task to prevent foreign key errors
+    await prisma.submission.deleteMany({
+      where: { taskId: taskId }
+    });
+
+    // 2. Safely delete the task
+    return await prisma.task.delete({
+      where: { id: taskId }
+    });
+  }
+
+  // Announcements
+  // --- ANNOUNCEMENT METHODS ---
+
+  static async createAnnouncement(data: any) {
+    return await prisma.announcement.create({ data });
+  }
+
+  static async getAllAnnouncements() {
+    return await prisma.announcement.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  static async updateAnnouncement(id: string, data: any) {
+    return await prisma.announcement.update({
+      where: { id },
+      data
+    });
+  }
+
+  static async deleteAnnouncement(id: string) {
+    return await prisma.announcement.delete({
       where: { id }
     });
   }

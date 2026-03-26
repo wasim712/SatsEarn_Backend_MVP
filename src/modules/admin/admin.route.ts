@@ -1,14 +1,22 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { AdminController } from './admin.controller';
-import { requireAuth } from '../../middlewares/auth.middleware';
-import { requireAdmin } from '../../middlewares/admin.middleware';
-import { createCampaignSchema, updateCampaignSchema } from './admin.schema'; // 1. Import schema
-import { ZodObject } from 'zod';
+import { Router, Request, Response, NextFunction } from "express";
+import { AdminController } from "./admin.controller";
+import { requireAuth } from "../../middlewares/auth.middleware";
+import { requireAdmin } from "../../middlewares/admin.middleware";
+import {
+  createAnnouncementSchema,
+  createCampaignSchema,
+  createTaskSchema,
+  updateAnnouncementSchema,
+  updateCampaignSchema,
+  updateTaskSchema,
+} from "./admin.schema";
+import { ZodObject } from "zod";
 
 const router = Router();
 
 // Zod Validation Middleware
-const validate = (schema: ZodObject) => 
+const validate =
+  (schema: ZodObject) =>
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync({ body: req.body });
@@ -18,25 +26,88 @@ const validate = (schema: ZodObject) =>
     }
   };
 
+// Apply auth + admin middleware globally
 router.use(requireAuth, requireAdmin);
 
-router.get('/metrics', AdminController.getDashboardMetrics);
+/*
+========================
+DASHBOARD
+========================
+*/
+router.get("/metrics", AdminController.getDashboardMetrics);
 
-// 2. Add the new campaign creation route
-router.post('/campaigns', validate(createCampaignSchema), AdminController.createCampaign);
-// Add this BELOW your other routes, inside admin.route.ts
-// GET /api/admin/campaigns/:id/analytics
-router.get('/campaigns/:id/analytics', AdminController.getCampaignAnalytics);
-// GET all campaigns
-router.get('/campaigns', AdminController.getAllCampaigns);
+/*
+========================
+CAMPAIGNS
+========================
+*/
 
-// GET a single campaign
-router.get('/campaigns/:id', AdminController.getCampaignById);
+// ✅ MOST SPECIFIC FIRST
+router.get("/campaigns/:id/analytics", AdminController.getCampaignAnalytics);
 
-// UPDATE a campaign
-router.patch('/campaigns/:id', validate(updateCampaignSchema), AdminController.updateCampaign);
+// Create
+router.post(
+  "/campaigns",
+  validate(createCampaignSchema),
+  AdminController.createCampaign,
+);
 
-// DELETE a campaign
-router.delete('/campaigns/:id', AdminController.deleteCampaign);
+// Get all
+router.get("/campaigns", AdminController.getAllCampaigns);
+
+// Update
+router.patch(
+  "/campaigns/:id",
+  validate(updateCampaignSchema),
+  AdminController.updateCampaign,
+);
+
+// Delete
+router.delete("/campaigns/:id", AdminController.deleteCampaign);
+
+// ⚠️ KEEP THIS LAST among campaign routes
+router.get("/campaigns/:id", AdminController.getCampaignById);
+
+/*
+========================
+TASKS (Nested)
+========================
+*/
+
+// Create task
+router.post(
+  "/campaigns/:campaignId/tasks",
+  validate(createTaskSchema),
+  AdminController.addTaskToCampaign,
+);
+
+// Get all tasks of campaign
+router.get(
+  "/campaigns/:campaignId/tasks",
+  AdminController.getAllTasksForCampaign,
+);
+
+// Get single task
+router.get(
+  "/campaigns/:campaignId/tasks/:taskId",
+  AdminController.getTaskById,
+);
+
+// Update task
+router.patch(
+  "/campaigns/:campaignId/tasks/:taskId",
+  validate(updateTaskSchema),
+  AdminController.updateTask,
+);
+
+// Delete task
+router.delete(
+  "/campaigns/:campaignId/tasks/:taskId",
+  AdminController.deleteTask,
+);
+router.get('/announcements', AdminController.getAllAnnouncements);
+router.post('/announcements', validate(createAnnouncementSchema), AdminController.createAnnouncement);
+router.patch('/announcements/:id', validate(updateAnnouncementSchema), AdminController.updateAnnouncement);
+router.delete('/announcements/:id', AdminController.deleteAnnouncement);
 
 export default router;

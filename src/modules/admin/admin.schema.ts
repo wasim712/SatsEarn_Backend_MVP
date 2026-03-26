@@ -38,3 +38,38 @@ export const updateCampaignSchema = z.object({
     isActive: z.boolean().optional(), // Allows admin to pause the campaign
   }),
 });
+export const createTaskSchema = z.object({
+  body: z.object({
+    title: z.string().min(3, "Task title is required").optional(),
+    description: z.string().optional(),
+    targetUrl: z.string().url().optional(),
+    rewardSatsOverride: z.number().int().positive().optional(), // In case one task pays more than others in the same campaign
+  }),
+});
+// Add this below createTaskSchema
+export const updateTaskSchema = z.object({
+  body: z.object({
+    title: z.string().min(3, "Task title must be at least 3 characters").optional(),
+    description: z.string().optional(),
+    targetUrl: z.string().url("Must be a valid URL").optional(),
+    rewardSatsOverride: z.number().int().positive().optional(),
+  }),
+});
+// Announcements
+export const createAnnouncementSchema = z.object({
+  body: z.object({
+    title: z.string().min(3, "Title is too short"),
+    content: z.string().min(10, "Content must be descriptive"),
+    type: z.enum(['INFO', 'WARNING', 'SUCCESS', 'PROMOTION']).default('INFO'),
+    isActive: z.boolean().default(true),
+  }),
+});
+
+export const updateAnnouncementSchema = z.object({
+  body: z.object({
+    title: z.string().min(3).optional(),
+    content: z.string().min(10).optional(),
+    type: z.enum(['INFO', 'WARNING', 'SUCCESS', 'PROMOTION']).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});

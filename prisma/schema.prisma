@@ -109,12 +109,19 @@ model Campaign {
 }
 
 model Task {
-  id          String       @id @default(uuid())
-  campaignId  String
-  campaign    Campaign     @relation(fields: [campaignId], references: [id])
+  id                 String       @id @default(uuid())
+  campaignId         String
+  campaign           Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   
-  submissions Submission[]
-  createdAt   DateTime     @default(now())
+  // ADD THESE NEW FIELDS
+  title              String?      // Optional so it doesn't break old tasks
+  description        String?
+  targetUrl          String?
+  rewardSatsOverride Int?         // If this specific task pays differently than the campaign default
+
+  submissions        Submission[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }
 
 model Submission {
@@ -142,4 +149,22 @@ model Submission {
   
   // Ensure a user can only submit a specific task once
   @@unique([userId, taskId])
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  SUCCESS
+  PROMOTION
+}
+
+model Announcement {
+  id        String           @id @default(uuid())
+  title     String
+  content   String           @db.Text
+  type      AnnouncementType @default(INFO)
+  isActive  Boolean          @default(true)
+  
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 }
