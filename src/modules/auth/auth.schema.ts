@@ -26,3 +26,17 @@ export const signInSchema = z.object({
     password: z.string(),
   }),
 });
+// Add these to the bottom of auth.schema.ts
+export const requestPasswordResetSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+  }),
+});
+
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+    token: z.string().length(6, "OTP must be exactly 6 digits"),
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+  }),
+});

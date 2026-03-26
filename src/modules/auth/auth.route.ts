@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AuthController } from './auth.controller';
-import { signUpSchema, verifyOtpSchema, signInSchema } from './auth.schema';
+import { signUpSchema, verifyOtpSchema, signInSchema, requestPasswordResetSchema, resetPasswordSchema } from './auth.schema';
 import { ZodObject } from 'zod';
 
 const router = Router();
@@ -19,5 +19,6 @@ const validate = (schema: ZodObject) =>
 router.post('/signup', validate(signUpSchema), AuthController.signUp);
 router.post('/verify-otp', validate(verifyOtpSchema), AuthController.verifyOtp);
 router.post('/signin', validate(signInSchema), AuthController.signIn);
-
+router.post('/forgot-password', validate(requestPasswordResetSchema), AuthController.requestPasswordReset);
+router.post('/reset-password', validate(resetPasswordSchema), AuthController.resetPassword);
 export default router;
