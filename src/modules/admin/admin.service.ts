@@ -266,4 +266,39 @@ export class AdminService {
       where: { id }
     });
   }
+  /**
+   * Fetches the global platform settings.
+   * If no settings exist (first run), it creates a record with the 
+   * default values defined in your Prisma schema.
+   */
+  static async getGamificationSettings() {
+    try {
+      // 1. Attempt to find the first (and only) settings record
+      let settings = await prisma.platformSettings.findFirst();
+
+      // 2. If it doesn't exist, create it immediately
+      if (!settings) {
+        settings = await prisma.platformSettings.create({
+          data: {} // Prisma will use the @default values from your schema.prisma
+        });
+        console.log("✅ Global Platform Settings initialized with defaults.");
+      }
+
+      return settings;
+    } catch (error: any) {
+      throw new Error(`Failed to fetch gamification settings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Updates the global settings.
+   */
+  static async updateGamificationSettings(data: any) {
+    const settings = await this.getGamificationSettings();
+
+    return await prisma.platformSettings.update({
+      where: { id: settings.id },
+      data,
+    });
+  }
 }

@@ -3,11 +3,10 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 // --- ENUMS ---
-// Using native enums saves database space compared to storing strings
 enum Role {
   USER
   SUPER_ADMIN
@@ -32,17 +31,29 @@ enum TaskCategory {
 
 enum SubmissionStatus {
   PENDING_24H      // AI verified, waiting for 24-hour re-check
-  LOCKED_15D       // Re-verified, sitting in 15-day security hold
-  WITHDRAWABLE     // 15 days passed, funds are available
-  MANUAL_REVIEW    // AI flagged it (score 70-89)
-  REJECTED         // Auto-rejected (score <70) or Admin rejected
+  LOCKED_15D        // Re-verified, sitting in 15-day security hold
+  WITHDRAWABLE      // 15 days passed, funds are available
+  MANUAL_REVIEW     // AI flagged it (score 70-89)
+  REJECTED          // Auto-rejected (score <70) or Admin rejected
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  SUCCESS
+  PROMOTION
 }
 
 // --- MODELS ---
 
 model User {
   id               String   @id @default(uuid())
-  // Links directly to Supabase's native auth.users table (Free Tier)
   supabaseAuthId   String   @unique 
   email            String   @unique
   phone            String?  @unique
@@ -53,10 +64,10 @@ model User {
   country          String?  // Locked after signup
   dateOfBirth      DateTime?
   
-  // Balances (Stored as Integers representing Sats to avoid floating point math errors)
-  balanceAvailable Int      @default(0)
-  balancePending   Int      @default(0)
-  balanceLocked    Int      @default(0)
+  // Balances (Sats)
+  balanceAvailable Int      @default(0) // Ready for withdrawal
+  balancePending   Int      @default(0) // In verification/hold
+  balanceLocked    Int      @default(0) // Any specifically locked bonus funds
 
   // Gamification & Stats
   tier             Tier     @default(BASIC)
@@ -65,13 +76,13 @@ model User {
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())
   
-  // Connected Social Accounts (Phase 1: Usernames only, no OAuth tokens)
+  // Connected Social Accounts
   twitterHandle    String?
   instagramHandle  String?
   telegramHandle   String?
   discordHandle    String?
 
-  // Referral System (5% Commission Logic)
+  // Referral System
   referralCode     String   @unique
   referredById     String?
   referredBy       User?    @relation("UserReferrals", fields: [referredById], references: [id])
@@ -79,9 +90,25 @@ model User {
 
   // Relations
   submissions      Submission[]
+  withdrawals      Withdrawal[]
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model PlatformSettings {
+  id                  String   @id @default(uuid())
+  
+  // Economics
+  welcomeBonusSats    Int      @default(50)
+  minWithdrawalSats   Int      @default(25000)
+  securityLockDays    Int      @default(15)
+  
+  // Gamification & XP
+  baseXpPerTask       Int      @default(10)
+  dailyStreakBonusXp  Int      @default(5)
+
+  updatedAt           DateTime @updatedAt
 }
 
 model Campaign {
@@ -90,16 +117,14 @@ model Campaign {
   description        String
   category           TaskCategory
   
-  // Targeting Details
   targetUrl          String?
-  socialHandleTarget String?      // e.g., the exact Twitter handle they need to follow
-  targetCountries    String[]     // Empty array = global
+  socialHandleTarget String?      
+  targetCountries    String[]     
   requiredTier       Tier         @default(BASIC)
   
-  // Economics
   rewardSats         Int
   totalCompletions   Int          @default(0)
-  maxCompletions     Int          // Caps the campaign budget
+  maxCompletions     Int          
   
   isActive           Boolean      @default(true)
   
@@ -113,11 +138,10 @@ model Task {
   campaignId         String
   campaign           Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   
-  // ADD THESE NEW FIELDS
-  title              String?      // Optional so it doesn't break old tasks
+  title              String?      
   description        String?
   targetUrl          String?
-  rewardSatsOverride Int?         // If this specific task pays differently than the campaign default
+  rewardSatsOverride Int?         
 
   submissions        Submission[]
   createdAt          DateTime     @default(now())
@@ -131,31 +155,32 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   
-  // Verification Pipeline Storage
-  screenshotUrl    String           // URL to Cloudflare R2 (Free Tier)
-  imageHash        String           // pHash string for free local duplicate detection
-  ocrExtractedText String?          @db.Text // Text dumped from GCP Vision
+  screenshotUrl    String           
+  imageHash        String?          
+  ocrExtractedText String?          @db.Text 
   
-  // AI Decision Engine
   confidenceScore  Int              @default(0)
-  metadataValid    Boolean          @default(true)
   status           SubmissionStatus @default(PENDING_24H)
   rejectionReason  String?
   
-  // Hold & Lock Timestamps
   submittedAt      DateTime         @default(now())
-  reverifyAt       DateTime?        // Scheduled time for 24-hour background job
-  unlockAt         DateTime?        // Scheduled time for 15-day release
+  reverifyAt       DateTime?        
+  unlockAt         DateTime?        
   
-  // Ensure a user can only submit a specific task once
   @@unique([userId, taskId])
 }
 
-enum AnnouncementType {
-  INFO
-  WARNING
-  SUCCESS
-  PROMOTION
+model Withdrawal {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id])
+  
+  amountSats      Int
+  lightningInvoice String?         @db.Text // Store BOLT11 invoice or address
+  status          WithdrawalStatus @default(PENDING)
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model Announcement {
