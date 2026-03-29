@@ -20,13 +20,9 @@ app.use(helmet());
 app.use('/api/', limiter);
 app.use(cors());
 app.use(express.json());
-
-// 2. Add the logger here so it catches EVERYTHING
 app.use(routeLogger); 
 
 app.use('/api/auth', authRoutes);
-
-// Add this below your user routes
 app.use('/api/admin', adminRoutes);
 
 app.use('/api/users', userRoutes);

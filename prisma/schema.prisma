@@ -6,7 +6,10 @@ datasource db {
   provider = "postgresql"
 }
 
-// --- ENUMS ---
+// ==========================================
+// ENUMS: The Rules of the System
+// ==========================================
+
 enum Role {
   USER
   SUPER_ADMIN
@@ -30,17 +33,26 @@ enum TaskCategory {
 }
 
 enum SubmissionStatus {
-  PENDING_24H      // AI verified, waiting for 24-hour re-check
-  LOCKED_15D        // Re-verified, sitting in 15-day security hold
-  WITHDRAWABLE      // 15 days passed, funds are available
-  MANUAL_REVIEW     // AI flagged it (score 70-89)
-  REJECTED          // Auto-rejected (score <70) or Admin rejected
+  PENDING_24H      // AI verified, waiting for 24-hour hold
+  LOCKED_15D       // Passed 24h, sitting in 15-day security lock
+  WITHDRAWABLE     // 15 days passed, funds moved to Available
+  MANUAL_REVIEW    // AI flagged it (score 70-89)
+  REJECTED         // Auto-rejected (score <70) or Admin rejected
 }
 
 enum WithdrawalStatus {
-  PENDING
-  PAID
-  REJECTED
+  PENDING          // User requested, waiting for Admin to pay
+  PAID             // Admin paid via Lightning Network
+  REJECTED         // Admin rejected (e.g., invalid Wallet ID)
+}
+
+enum TransactionType {
+  TASK_REWARD
+  REFERRAL_BONUS
+  WITHDRAWAL
+  WELCOME_BONUS
+  PENALTY
+  STREAK_BONUS
 }
 
 enum AnnouncementType {
@@ -50,7 +62,9 @@ enum AnnouncementType {
   PROMOTION
 }
 
-// --- MODELS ---
+// ==========================================
+// MODELS: The Data Architecture
+// ==========================================
 
 model User {
   id               String   @id @default(uuid())
@@ -61,13 +75,13 @@ model User {
   
   // Basic KYC
   fullName         String?
-  country          String?  // Locked after signup
+  country          String?  
   dateOfBirth      DateTime?
   
-  // Balances (Sats)
-  balanceAvailable Int      @default(0) // Ready for withdrawal
-  balancePending   Int      @default(0) // In verification/hold
-  balanceLocked    Int      @default(0) // Any specifically locked bonus funds
+  // THE TRIPLE-BALANCE SYSTEM (Stored in Sats)
+  balanceAvailable Int      @default(0) // Safe to withdraw
+  balancePending   Int      @default(0) // Stuck in 24h or 15d lock
+  balanceLocked    Int      @default(0) // Welcome bonuses or special locked funds
 
   // Gamification & Stats
   tier             Tier     @default(BASIC)
@@ -91,25 +105,56 @@ model User {
   // Relations
   submissions      Submission[]
   withdrawals      Withdrawal[]
-  
+  transactions     Ledger[]     
+  isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([role])
 }
+
+// ------------------------------------------
+// FINANCIAL LOGIC: The Audit Trail
+// ------------------------------------------
+
+model Ledger {
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  
+  amountSats    Int             // Positive (Income) or Negative (Withdrawal)
+  type          TransactionType
+  description   String?         
+  
+  // Reference to the Submission ID or Withdrawal ID that triggered this
+  referenceId   String?         
+  
+  createdAt     DateTime        @default(now())
+
+  @@index([userId, type])
+}
+
+// ------------------------------------------
+// SYSTEM RULES
+// ------------------------------------------
 
 model PlatformSettings {
-  id                  String   @id @default(uuid())
+  id                   String   @id @default(uuid())
   
-  // Economics
-  welcomeBonusSats    Int      @default(50)
-  minWithdrawalSats   Int      @default(25000)
-  securityLockDays    Int      @default(15)
+  welcomeBonusSats     Int      @default(50)
+  minWithdrawalSats    Int      @default(25000)
+  securityLockDays     Int      @default(15)
+  referralBonusPercent Int      @default(5) 
   
-  // Gamification & XP
-  baseXpPerTask       Int      @default(10)
-  dailyStreakBonusXp  Int      @default(5)
+  baseXpPerTask        Int      @default(10)
+  dailyStreakBonusXp   Int      @default(5)
 
-  updatedAt           DateTime @updatedAt
+  updatedAt            DateTime @updatedAt
 }
+
+// ------------------------------------------
+// CAMPAIGNS & TASKS
+// ------------------------------------------
 
 model Campaign {
   id                 String       @id @default(uuid())
@@ -131,6 +176,8 @@ model Campaign {
   tasks              Task[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
+
+  @@index([isActive, requiredTier]) 
 }
 
 model Task {
@@ -142,11 +189,18 @@ model Task {
   description        String?
   targetUrl          String?
   rewardSatsOverride Int?         
+  
+  // Flexible rules (e.g., {"minFollowers": 100})
+  requirements       Json?        
 
   submissions        Submission[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 }
+
+// ------------------------------------------
+// PROOF & AI ENGINE
+// ------------------------------------------
 
 model Submission {
   id               String           @id @default(uuid())
@@ -155,32 +209,52 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   
+  // Storage & Verification
   screenshotUrl    String           
-  imageHash        String?          
+  imageHash        String?          // For duplicate detection
   ocrExtractedText String?          @db.Text 
   
+  // AI Decisions
   confidenceScore  Int              @default(0)
   status           SubmissionStatus @default(PENDING_24H)
   rejectionReason  String?
   
+  // Accountability
+  reviewedById     String?          // Which Admin manually approved/rejected this
+
+  // Timestamps for Cron Jobs
   submittedAt      DateTime         @default(now())
   reverifyAt       DateTime?        
   unlockAt         DateTime?        
   
   @@unique([userId, taskId])
+  @@index([status]) 
+  @@index([imageHash]) 
 }
 
+// ------------------------------------------
+// MONEY OUT: Withdrawals & Wallets
+// ------------------------------------------
+
 model Withdrawal {
-  id              String           @id @default(uuid())
-  userId          String
-  user            User             @relation(fields: [userId], references: [id])
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
   
-  amountSats      Int
-  lightningInvoice String?         @db.Text // Store BOLT11 invoice or address
-  status          WithdrawalStatus @default(PENDING)
+  amountSats       Int
   
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  // THE WALLET ID: Where the user wants the money sent
+  lightningInvoice String           @db.Text 
+  
+  // THE RECEIPT: The Admin pastes the Tx Hash here after paying
+  paymentProof     String?          
+  
+  status           WithdrawalStatus @default(PENDING)
+  
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([status])
 }
 
 model Announcement {

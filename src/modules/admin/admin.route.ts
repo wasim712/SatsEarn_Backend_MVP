@@ -80,26 +80,22 @@ router.post(
   validate(createTaskSchema),
   AdminController.addTaskToCampaign,
 );
-
 // Get all tasks of campaign
 router.get(
   "/campaigns/:campaignId/tasks",
   AdminController.getAllTasksForCampaign,
 );
-
 // Get single task
 router.get(
   "/campaigns/:campaignId/tasks/:taskId",
   AdminController.getTaskById,
 );
-
 // Update task
 router.patch(
   "/campaigns/:campaignId/tasks/:taskId",
   validate(updateTaskSchema),
   AdminController.updateTask,
 );
-
 // Delete task
 router.delete(
   "/campaigns/:campaignId/tasks/:taskId",
@@ -109,5 +105,17 @@ router.get('/announcements', AdminController.getAllAnnouncements);
 router.post('/announcements', validate(createAnnouncementSchema), AdminController.createAnnouncement);
 router.patch('/announcements/:id', validate(updateAnnouncementSchema), AdminController.updateAnnouncement);
 router.delete('/announcements/:id', AdminController.deleteAnnouncement);
+// --- SUBMISSIONS ---
+router.get('/submissions/pending', requireAdmin, AdminController.getPendingSubmissions);
+router.post('/submissions/:id/review', requireAdmin, AdminController.reviewSubmission);
 
+// --- WITHDRAWALS ---
+router.get('/withdrawals/pending', requireAdmin, AdminController.getPendingWithdrawals);
+router.post('/withdrawals/:id/process', requireAdmin, AdminController.processWithdrawal);
+
+// --- SETTINGS ---
+router.get('/settings', requireAdmin, AdminController.getPlatformSettings);
+router.put('/settings', requireAdmin, AdminController.updatePlatformSettings);
+// Add this under your other GET routes
+router.get('/users', requireAdmin, AdminController.getAllUsers);
 export default router;
