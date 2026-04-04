@@ -1,23 +1,16 @@
 {
   "compilerOptions": {
-    /* Base Options */
     "target": "ES2022",
     "module": "node16",
     "moduleResolution": "node16",
     "esModuleInterop": true,
-    
-    /* Strict Type-Checking Options */
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    
-    /* Directory Setup */
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": ["node"],
-    /* Remove the problematic setting */
-    "verbatimModuleSyntax": false
+    "types": ["node"]
   },
-  "include": ["src/**/*", "prisma.config.ts"],
+  "include": ["src/**/*"], // 👈 Keep it simple: everything in src
   "exclude": ["node_modules", "dist"]
 }
