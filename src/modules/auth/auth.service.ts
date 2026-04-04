@@ -1,6 +1,5 @@
 import { supabase } from '../../external/supabase.client';
 import { prisma } from '../../db/prisma.client';
-import { v4 as uuidv4 } from 'uuid';
 import { AdminService } from '../admin/admin.service'; // Import to get global settings
 
 export class AuthService {
@@ -59,6 +58,7 @@ export class AuthService {
       }
 
       // 3. Create user with Gamification Defaults
+      const { v4: uuidv4 } = await import('uuid');
       dbUser = await prisma.user.create({
         data: {
           supabaseAuthId: supabaseUser.id,
