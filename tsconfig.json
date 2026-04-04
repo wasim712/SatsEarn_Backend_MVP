@@ -3,7 +3,7 @@
     /* Base Options */
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "node",
+    "moduleResolution": "node10",
     "esModuleInterop": true,
     
     /* Strict Type-Checking Options */
