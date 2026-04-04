@@ -118,4 +118,5 @@ router.get('/settings', requireAdmin, AdminController.getPlatformSettings);
 router.put('/settings', requireAdmin, AdminController.updatePlatformSettings);
 // Add this under your other GET routes
 router.get('/users', requireAdmin, AdminController.getAllUsers);
+
 export default router;
