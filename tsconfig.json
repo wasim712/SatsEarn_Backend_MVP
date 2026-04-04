@@ -14,7 +14,7 @@
     /* Directory Setup */
     "rootDir": "./src",
     "outDir": "./dist",
-    
+    "types": ["node"],
     /* Remove the problematic setting */
     "verbatimModuleSyntax": false
   },

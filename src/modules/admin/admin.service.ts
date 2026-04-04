@@ -266,4 +266,240 @@ export class AdminService {
       where: { id }
     });
   }
+  /**
+   * Fetches the global platform settings.
+   * If no settings exist (first run), it creates a record with the 
+   * default values defined in your Prisma schema.
+   */
+  static async getGamificationSettings() {
+    try {
+      // 1. Attempt to find the first (and only) settings record
+      let settings = await prisma.platformSettings.findFirst();
+
+      // 2. If it doesn't exist, create it immediately
+      if (!settings) {
+        settings = await prisma.platformSettings.create({
+          data: {} // Prisma will use the @default values from your schema.prisma
+        });
+        console.log("✅ Global Platform Settings initialized with defaults.");
+      }
+
+      return settings;
+    } catch (error: any) {
+      throw new Error(`Failed to fetch gamification settings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Updates the global settings.
+   */
+  static async updateGamificationSettings(data: any) {
+    const settings = await this.getGamificationSettings();
+
+    return await prisma.platformSettings.update({
+      where: { id: settings.id },
+      data,
+    });
+  }
+  // **************************************************************
+  // --- SUBMISSION REVIEW MANAGEMENT ---
+  // **************************************************************
+
+  // **************************************************************
+  // --- SUBMISSION REVIEW MANAGEMENT ---
+  // **************************************************************
+
+  static async getPendingSubmissions() {
+    return await prisma.submission.findMany({
+      where: { status: 'MANUAL_REVIEW' },
+      include: {
+        // Removed trustScore, added isActive to see if the user was soft-deleted
+        user: { 
+          select: { 
+            email: true, 
+            fullName: true, 
+            tier: true,
+            isActive: true 
+          } 
+        },
+        // Included the task override reward in case this specific task pays differently
+        task: { 
+          select: {
+            title: true,
+            rewardSatsOverride: true,
+            campaign: { 
+              select: { title: true, rewardSats: true } 
+            }
+          } 
+        }
+      },
+      orderBy: { submittedAt: 'asc' } // Review oldest submissions first
+    });
+  }
+  static async reviewSubmission(submissionId: string, status: 'PENDING_24H' | 'REJECTED', rejectionReason?: string, adminId?: string) {
+    return await prisma.$transaction(async (tx) => {
+      // 1. Fetch submission with relationships
+      const submission = await tx.submission.findUnique({
+        where: { id: submissionId },
+        include: { 
+          task: { include: { campaign: true } },
+          user: true 
+        }
+      });
+
+      if (!submission) throw new Error("Submission not found");
+      if (submission.status !== 'MANUAL_REVIEW') throw new Error(`Cannot review submission with status: ${submission.status}`);
+
+      // 2. IF APPROVED: Just update the status to move it forward in the pipeline
+      // (The Sats were already added to balancePending when it was initially submitted)
+      if (status === 'PENDING_24H') {
+        return await tx.submission.update({
+          where: { id: submissionId },
+          data: { 
+            status: 'PENDING_24H',
+            reviewedById: adminId 
+          }
+        });
+      }
+
+      // 3. IF REJECTED: We must CLAW BACK the pending funds from the worker AND the referrer
+      if (status === 'REJECTED') {
+        const reward = submission.task.rewardSatsOverride || submission.task.campaign.rewardSats;
+
+        // A. Reverse User's Pending Balance
+        await tx.user.update({
+          where: { id: submission.userId },
+          data: { balancePending: { decrement: reward } }
+        });
+
+        // B. Log the reversal in the Ledger
+        await tx.ledger.create({
+          data: {
+            userId: submission.userId,
+            amountSats: -reward,
+            type: 'PENALTY', // Standardized type for reversals
+            description: `Submission Rejected: ${rejectionReason || 'Failed manual review'}`,
+            referenceId: submission.id
+          }
+        });
+
+        // C. Check if we need to claw back a referral bonus
+        const settings = await this.getGamificationSettings();
+        if (submission.user.referredById) {
+          const referralBonus = Math.floor(reward * (settings.referralBonusPercent / 100));
+          if (referralBonus > 0) {
+            await tx.user.update({
+              where: { id: submission.user.referredById },
+              data: { balancePending: { decrement: referralBonus } }
+            });
+            await tx.ledger.create({
+              data: {
+                userId: submission.user.referredById,
+                amountSats: -referralBonus,
+                type: 'PENALTY',
+                description: `Referral bonus reversed for rejected task`,
+                referenceId: submission.id
+              }
+            });
+          }
+        }
+
+        // D. Finally, mark the submission as rejected
+        return await tx.submission.update({
+          where: { id: submissionId },
+          data: { 
+            status: 'REJECTED', 
+            rejectionReason,
+            reviewedById: adminId 
+          }
+        });
+      }
+    });
+  }
+
+  // **************************************************************
+  // --- WITHDRAWAL (PAYOUT) MANAGEMENT ---
+  // **************************************************************
+
+  static async getPendingWithdrawals() {
+    return await prisma.withdrawal.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        user: { select: { email: true, fullName: true, tier: true } }
+      },
+      orderBy: { createdAt: 'asc' } // Pay the oldest requests first
+    });
+  }
+
+  static async processWithdrawal(withdrawalId: string, status: 'PAID' | 'REJECTED', paymentProof?: string) {
+    return await prisma.$transaction(async (tx) => {
+      const withdrawal = await tx.withdrawal.findUnique({
+        where: { id: withdrawalId }
+      });
+
+      if (!withdrawal) throw new Error("Withdrawal request not found");
+      if (withdrawal.status !== 'PENDING') throw new Error(`Withdrawal is already ${withdrawal.status}`);
+
+      // 1. IF ADMIN PAID IT: Save the TxHash and mark as PAID
+      if (status === 'PAID') {
+        if (!paymentProof) throw new Error("Payment proof (TxHash) is required when marking as PAID");
+        
+        return await tx.withdrawal.update({
+          where: { id: withdrawalId },
+          data: { status: 'PAID', paymentProof }
+        });
+      }
+
+      // 2. IF ADMIN REJECTED IT (e.g., Invalid Wallet ID)
+      if (status === 'REJECTED') {
+        // We must REFUND the user's available balance since we deducted it when they requested the withdrawal
+        await tx.user.update({
+          where: { id: withdrawal.userId },
+          data: { balanceAvailable: { increment: withdrawal.amountSats } }
+        });
+
+        // Log the refund in the Ledger
+        await tx.ledger.create({
+          data: {
+            userId: withdrawal.userId,
+            amountSats: withdrawal.amountSats,
+            type: 'WITHDRAWAL', // Reversal of withdrawal
+            description: `Withdrawal Rejected / Refunded to Available Balance`,
+            referenceId: withdrawal.id
+          }
+        });
+
+        // Update the withdrawal status
+        return await tx.withdrawal.update({
+          where: { id: withdrawalId },
+          data: { status: 'REJECTED' }
+        });
+      }
+    });
+  }
+  static async getAllUsers() {
+    return await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        tier: true,
+        xp: true,
+        isActive: true,
+        // Balances
+        balanceAvailable: true,
+        balancePending: true,
+        balanceLocked: true,
+        // Referral stats
+        referralCode: true,
+        _count: {
+          select: { referrals: true, submissions: true } // Quick stats for the table
+        },
+        createdAt: true,
+        lastActivityAt: true,
+      },
+      orderBy: { createdAt: 'desc' }, // Newest users first
+    });
+  }
 }

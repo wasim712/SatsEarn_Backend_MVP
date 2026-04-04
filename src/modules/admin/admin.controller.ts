@@ -189,4 +189,90 @@ export class AdminController {
       res.status(400).json({ error: error.message });
     }
   }
+  static async getPendingSubmissions(req: Request, res: Response) {
+    try {
+      // Assuming you add this to AdminService
+      const submissions = await AdminService.getPendingSubmissions(); 
+      res.status(200).json(submissions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async reviewSubmission(req: Request, res: Response) {
+    try {
+      // 1. Explicitly cast the ID as a single string
+      const id = req.params.id as string;
+      
+      // 2. Explicitly cast the status to match the exact Enum required by the service
+      const status = req.body.status as 'PENDING_24H' | 'REJECTED';
+      
+      // 3. Cast optional fields
+      const rejectionReason = req.body.rejectionReason as string | undefined;
+      const adminId = req.user?.id as string | undefined; 
+
+      const result = await AdminService.reviewSubmission(id, status, rejectionReason, adminId);
+      res.status(200).json({ message: `Submission marked as ${status}`, result });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+  // **************************************************************
+  // --- WITHDRAWAL CONTROLLERS ---
+  // **************************************************************
+
+  static async getPendingWithdrawals(req: Request, res: Response) {
+    try {
+      const withdrawals = await AdminService.getPendingWithdrawals();
+      res.status(200).json(withdrawals);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+static async processWithdrawal(req: Request, res: Response) {
+    try {
+      // 1. Explicitly cast the ID as a single string
+      const id = req.params.id as string;
+      
+      // 2. Explicitly cast the status to match the exact Enum
+      const status = req.body.status as 'PAID' | 'REJECTED';
+      
+      // 3. Cast the payment proof as a string or undefined
+      const paymentProof = req.body.paymentProof as string | undefined;
+
+      const result = await AdminService.processWithdrawal(id, status, paymentProof);
+      res.status(200).json({ message: `Withdrawal marked as ${status}`, result });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+  // **************************************************************
+  // --- SETTINGS CONTROLLERS ---
+  // **************************************************************
+
+  static async getPlatformSettings(req: Request, res: Response) {
+    try {
+      const settings = await AdminService.getGamificationSettings();
+      res.status(200).json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async updatePlatformSettings(req: Request, res: Response) {
+    try {
+      const updatedSettings = await AdminService.updateGamificationSettings(req.body);
+      res.status(200).json({ message: "Settings updated", settings: updatedSettings });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+  static async getAllUsers(req: Request, res: Response) {
+    try {
+      const users = await AdminService.getAllUsers();
+      res.status(200).json(users);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 }

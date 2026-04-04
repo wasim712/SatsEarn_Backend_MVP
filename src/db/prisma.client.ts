@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { env } from '../config/env';
 
 // 1. Create a native Postgres connection pool using your env URL
-const pool = new Pool({ 
+export const pool = new Pool({ 
   connectionString: env.DATABASE_URL 
 });
 

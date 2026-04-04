@@ -1,13 +1,13 @@
 import { supabase } from '../../external/supabase.client';
 import { prisma } from '../../db/prisma.client';
 import { v4 as uuidv4 } from 'uuid';
+import { AdminService } from '../admin/admin.service'; // Import to get global settings
 
 export class AuthService {
   // Step 1: Sign up and send OTP
   static async signUp(data: any) {
     const { email, password, fullName, country, dateOfBirth, referralCode } = data;
 
-    // Supabase handles sending the Email OTP automatically if Email Confirmations are ON
     const { data: authData, error } = await supabase.auth.signUp({
       email,
       password,
@@ -38,16 +38,18 @@ export class AuthService {
     const supabaseUser = authData.user;
     if (!supabaseUser) throw new Error("Verification failed");
 
-    // Check if user already exists in Prisma to prevent overwriting
     let dbUser = await prisma.user.findUnique({
       where: { supabaseAuthId: supabaseUser.id },
     });
 
     if (!dbUser) {
-      // Create user in Prisma, grab KYC data from Supabase metadata
       const meta = supabaseUser.user_metadata;
       
-      // Handle referral logic if a code was provided
+      // 1. Fetch Dynamic Welcome Bonus from Admin Settings
+      const settings = await AdminService.getGamificationSettings();
+      const welcomeBonus = settings.welcomeBonusSats;
+
+      // 2. Handle referral logic
       let referredById = null;
       if (meta.referralCode) {
         const referrer = await prisma.user.findUnique({
@@ -56,6 +58,7 @@ export class AuthService {
         if (referrer) referredById = referrer.id;
       }
 
+      // 3. Create user with Gamification Defaults
       dbUser = await prisma.user.create({
         data: {
           supabaseAuthId: supabaseUser.id,
@@ -63,8 +66,13 @@ export class AuthService {
           fullName: meta.fullName,
           country: meta.country,
           dateOfBirth: new Date(meta.dateOfBirth),
-          referralCode: uuidv4().substring(0, 8).toUpperCase(), // Generate unique referral code
-          balanceLocked: 50, // Welcome bonus applied here
+          referralCode: uuidv4().substring(0, 8).toUpperCase(),
+          
+          // STARTING STATS
+          xp: 0,             // Start at Level 0
+          tier: 'BASIC',     // Start at Basic Tier
+          balanceLocked: welcomeBonus, // 50 Sats Welcome Bonus
+          
           referredById,
         },
       });
@@ -88,7 +96,6 @@ export class AuthService {
 
     return { session: data.session, user: dbUser };
   }
-  // Add these inside your AuthService class
 
   static async requestPasswordReset(email: string) {
     const { error } = await supabase.auth.resetPasswordForEmail(email);
@@ -97,7 +104,6 @@ export class AuthService {
   }
 
   static async resetPassword(email: string, token: string, newPassword: string) {
-    // 1. Verify the recovery OTP
     const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
       email,
       token,
@@ -107,7 +113,6 @@ export class AuthService {
     if (verifyError) throw new Error(verifyError.message);
     if (!verifyData.user) throw new Error("Verification failed");
 
-    // 2. Update the user's password using the Supabase Admin API
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       verifyData.user.id,
       { password: newPassword }
