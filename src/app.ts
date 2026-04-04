@@ -18,7 +18,7 @@ app.use(helmet());
 // 2. Rate Limiting (Global)
 
 app.use('/api/', limiter);
-app.use(cors());
+// app.use(cors());
 app.use(express.json());
 app.use(routeLogger); 
 
