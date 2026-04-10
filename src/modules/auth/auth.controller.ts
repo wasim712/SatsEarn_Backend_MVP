@@ -51,4 +51,15 @@ export class AuthController {
       res.status(400).json({ error: error.message });
     }
   }
+static async checkUsername(req: Request, res: Response) {
+  const { username } = req.query as { username: string };
+
+  if (!username) {
+    return res.status(400).json({ error: "Username is required" });
+  }
+
+  const result = await AuthService.checkUsername(username);
+
+  return res.status(200).json(result); // ✅ FIXED
+}
 }

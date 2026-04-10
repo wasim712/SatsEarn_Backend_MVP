@@ -1,8 +1,10 @@
+import { SubmissionStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma.client";
 import { supabaseAdmin } from "../../external/supabase.admin";
 import { supabase } from "../../external/supabase.client";
 import { calculateLevelAndTier } from "../../utils/gamification.util";
 import { AdminService } from "../admin/admin.service";
+import { AiVerificationService } from "../verification/verification.service";
 export class UserService {
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
@@ -221,106 +223,111 @@ export class UserService {
 
     return campaign;
   }
-  // static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
-  //   const settings = await AdminService.getGamificationSettings();
-  //   return await prisma.$transaction(async (tx) => {
+static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
+    // Note: If you don't have GamificationSettings yet, hardcode settings here or fetch from DB
+    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
 
-  //     // 1. Fetch User (We need to know who referred them for the bonus)
-  //     const user = await tx.user.findUnique({
-  //       where: { id: userId },
-  //       select: { id: true, referredById: true, fullName: true }
-  //     });
-  //     if (!user) throw new Error("User not found.");
+    return await prisma.$transaction(async (tx) => {
+      // 1. Fetch User (needed for Referral logic)
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, referredById: true, fullName: true }
+      });
+      if (!user) throw new Error("User not found.");
 
-  //     // 2. Fetch Task & Check Campaign Budget Limits
-  //     const task = await tx.task.findUnique({
-  //       where: { id: taskId },
-  //       include: { campaign: true }
-  //     });
-  //     if (!task) throw new Error("Task not found.");
-  //     if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
-  //       throw new Error("This campaign has reached its maximum budget.");
-  //     }
+      // 2. Fetch Task & Enforce Campaign Budgets
+      const task = await tx.task.findUnique({
+        where: { id: taskId },
+        include: { campaign: true }
+      });
+      if (!task) throw new Error("Task not found.");
+      if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
+        throw new Error("This campaign has reached its maximum budget and is closed.");
+      }
 
-  //     // 3. Prevent Double Submissions (Using the unique constraint in the schema)
-  //     const existing = await tx.submission.findUnique({
-  //       where: { userId_taskId: { userId, taskId } }
-  //     });
-  //     if (existing) throw new Error("You already submitted proof for this task.");
+      // 3. Prevent Double Submissions
+      const existing = await tx.submission.findUnique({
+        where: { userId_taskId: { userId, taskId } }
+      });
+      if (existing) throw new Error("You have already submitted proof for this task.");
 
-  //     // 4. Run AI Verifier (The Mock Vision Check)
-  //     const aiResult = await AIVerifier.analyzeProof(screenshotUrl);
-  //     const determinedStatus = AIVerifier.determineStatus(aiResult.confidenceScore);
+      // 4. Run AI Verifier dynamically using the task requirements or description
+      const rulesContext = task.requirements || task.description || task.campaign.description;
+      const aiResult = await AiVerificationService.analyzeProof(screenshotUrl, rulesContext);
 
-  //     // 5. Create the Submission Record
-  //     const submission = await tx.submission.create({
-  //       data: {
-  //         userId,
-  //         taskId,
-  //         screenshotUrl,
-  //         confidenceScore: aiResult.confidenceScore,
-  //         status: determinedStatus,
-  //         ocrExtractedText: aiResult.extractedText
-  //       }
-  //     });
+      // 5. Determine Database Status based on AI Score
+      let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
+      if (aiResult.score >= 90) determinedStatus = SubmissionStatus.LOCKED_15D; // Auto-Pass
+      else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW; // Unsure
+      else determinedStatus = SubmissionStatus.REJECTED; // Failed
 
-  //     // 6. IF APPROVED or FLAGGED FOR REVIEW: Distribute the Sats!
-  //     const reward = task.rewardSatsOverride || task.campaign.rewardSats;
+      // 6. Create the Submission Record
+      const submission = await tx.submission.create({
+        data: {
+          userId,
+          taskId,
+          screenshotUrl,
+          confidenceScore: aiResult.score,
+          status: determinedStatus,
+          rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
+          unlockAt: determinedStatus === SubmissionStatus.LOCKED_15D 
+            ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) // Lock for 15 days if auto-passed
+            : null
+        }
+      });
 
-  //     if (determinedStatus === 'PENDING_24H' || determinedStatus === 'MANUAL_REVIEW') {
+      // 7. IF NOT REJECTED: Distribute the Sats to Pending Balances
+      if (determinedStatus !== SubmissionStatus.REJECTED) {
+        const reward = task.rewardSatsOverride || task.campaign.rewardSats;
 
-  //       // --- A. PAY THE WORKER ---
-  //       await tx.user.update({
-  //         where: { id: userId },
-  //         data: { balancePending: { increment: reward } }
-  //       });
+        // --- A. PAY THE WORKER (To Pending Balance) ---
+        await tx.user.update({
+          where: { id: userId },
+          data: { balancePending: { increment: reward } }
+        });
 
-  //       // Write the immutable receipt for the worker
-  //       await tx.ledger.create({
-  //         data: {
-  //           userId,
-  //           amountSats: reward,
-  //           type: 'TASK_REWARD',
-  //           description: `Task Submitted: ${task.campaign.title}`,
-  //           referenceId: submission.id
-  //         }
-  //       });
+        await tx.ledger.create({
+          data: {
+            userId,
+            amountSats: reward,
+            type: 'TASK_REWARD',
+            description: `Task Submitted: ${task.campaign.title} (Status: ${determinedStatus})`,
+            referenceId: submission.id
+          }
+        });
 
-  //       // --- B. PAY THE REFERRER (The Lifetime Commission) ---
-  //       if (user.referredById) {
-  //         // Calculate the cut (e.g., 5% of 100 = 5).
-  //         // Math.floor prevents fractional Sats from crashing the database.
-  //         const referralBonus = Math.floor(reward * (settings.referralBonusPercent / 100));
+        // --- B. PAY THE REFERRER ---
+        if (user.referredById) {
+          const referralBonus = Math.floor(reward * (settings.referralBonusPercent / 100));
 
-  //         if (referralBonus > 0) {
-  //           await tx.user.update({
-  //             where: { id: user.referredById },
-  //             data: { balancePending: { increment: referralBonus } }
-  //           });
+          if (referralBonus > 0) {
+            await tx.user.update({
+              where: { id: user.referredById },
+              data: { balancePending: { increment: referralBonus } }
+            });
 
-  //           // Write the immutable receipt for the referrer
-  //           await tx.ledger.create({
-  //             data: {
-  //               userId: user.referredById,
-  //               amountSats: referralBonus,
-  //               type: 'REFERRAL_BONUS',
-  //               description: `Commission from ${user.fullName || 'a referred user'}'s task`,
-  //               referenceId: submission.id // Links directly to the exact screenshot/task
-  //             }
-  //           });
-  //         }
-  //       }
+            await tx.ledger.create({
+              data: {
+                userId: user.referredById,
+                amountSats: referralBonus,
+                type: 'REFERRAL_BONUS',
+                description: `Commission from ${user.fullName || 'a referred user'}`,
+                referenceId: submission.id
+              }
+            });
+          }
+        }
 
-  //       // --- C. UPDATE CAMPAIGN STATS ---
-  //       await tx.campaign.update({
-  //         where: { id: task.campaign.id },
-  //         data: { totalCompletions: { increment: 1 } }
-  //       });
-  //     }
+        // --- C. UPDATE CAMPAIGN STATS ---
+        await tx.campaign.update({
+          where: { id: task.campaign.id },
+          data: { totalCompletions: { increment: 1 } }
+        });
+      }
 
-  //     return submission;
-  //   }, { isolationLevel: 'Serializable' });
-  // }
+      return submission;
+    }, { isolationLevel: 'Serializable' }); // Serializable locks this down to prevent race condition overspending
+  }
 
   static async getReferralDashboard(userId: string) {
     const thirtyDaysAgo = new Date();
@@ -626,5 +633,151 @@ export class UserService {
       targetUrl: task.targetUrl || task.campaign.targetUrl,
       instructions: task.description || task.campaign.description
     };
+  }
+  // **************************************************************
+  // --- DAILY QUIZ: USER FLOW ---
+  // **************************************************************
+
+  // 1. Fetch Today's Quiz
+  static async getTodayQuiz(userId: string) {
+    // Standardize "Today" to Midnight UTC to match the Admin's Date selection
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const quiz = await prisma.dailyQuiz.findFirst({
+      where: { date: today, isActive: true },
+      include: { questions: { orderBy: { order: 'asc' } } }
+    });
+
+    if (!quiz) throw new Error("There is no active quiz for today. Check back tomorrow!");
+
+    // Security Check: Did they already take it?
+    const existingAttempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } }
+    });
+
+    if (existingAttempt) {
+      throw new Error(`You already took today's quiz! You scored ${existingAttempt.score}/${quiz.questions.length}.`);
+    }
+
+    // SECURITY STRIPPING: Remove the `correctAnswer` before sending to the frontend!
+    const safeQuestions = quiz.questions.map(q => ({
+      id: q.id,
+      questionText: q.questionText,
+      options: q.options,
+      order: q.order
+    }));
+
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      rewardSats: quiz.rewardSats,
+      questions: safeQuestions
+    };
+  }
+
+
+  // 2. Grade and Reward
+static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string, answer: string }>) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const quiz = await prisma.dailyQuiz.findFirst({
+      where: { date: today, isActive: true },
+      include: { questions: true }
+    });
+
+    if (!quiz) throw new Error("Quiz not found or has expired.");
+
+    // Prevent double-dipping
+    const existingAttempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } }
+    });
+
+    if (existingAttempt) throw new Error("You have already submitted answers for today's quiz.");
+// --- VALIDATION STRATEGY ---
+    if (userAnswers.length !== quiz.questions.length) {
+      throw new Error(`You must submit exactly ${quiz.questions.length} answers.`);
+    }
+
+    const validQuestionIds = new Set(quiz.questions.map(q => q.id));
+    for (const submission of userAnswers) {
+      if (!validQuestionIds.has(submission.questionId)) {
+        throw new Error(`Invalid Question ID detected: ${submission.questionId}`);
+      }
+    }
+    // --- GRADING LOGIC ---
+    let score = 0;
+    const totalQuestions = quiz.questions.length;
+
+    // Create a map of correct answers for O(1) fast lookup
+    const answerKey = new Map(quiz.questions.map(q => [q.id, q.correctAnswer]));
+
+    for (const submission of userAnswers) {
+      const correctAnswer = answerKey.get(submission.questionId);
+      if (correctAnswer && correctAnswer === submission.answer) {
+        score++;
+      }
+    }
+
+    // Still track if they got a perfect score for gamification/UI purposes
+    const passed = score === totalQuestions; 
+
+    // --- REWARD MATH (Proportional Distribution) ---
+    // Example: 10 Max Sats / 3 Questions = 3.333 Sats per correct answer
+    const exactEarnedSats = (quiz.rewardSats / totalQuestions) * score;
+    
+    // We MUST use Math.floor() so Prisma doesn't crash trying to save a decimal into an Int column.
+    const finalRewardSats = Math.floor(exactEarnedSats);
+
+    // --- DATABASE TRANSACTION (All or Nothing) ---
+    return await prisma.$transaction(async (tx) => {
+      // 1. Record the attempt so they can't try again
+      const attempt = await tx.quizAttempt.create({
+        data: {
+          userId,
+          dailyQuizId: quiz.id,
+          score,
+          passed
+        }
+      });
+
+      // 2. If they got absolutely nothing right, return early without touching balances
+      if (finalRewardSats <= 0) {
+        return { 
+          message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Study up for tomorrow!`, 
+          passed: false, 
+          score,
+          rewardEarned: 0
+        };
+      }
+
+      // 3. Pay them the partial (or full) amount instantly!
+      await tx.user.update({
+        where: { id: userId },
+        data: { balanceAvailable: { increment: finalRewardSats } }
+      });
+
+      // 4. Log the receipt
+      await tx.ledger.create({
+        data: {
+          userId,
+          amountSats: finalRewardSats,
+          type: 'DAILY_QUIZ_REWARD',
+          description: `Daily Quiz: ${quiz.title} (${score}/${totalQuestions} correct)`,
+          referenceId: attempt.id
+        }
+      });
+
+      // Return dynamic messaging based on performance
+      return {
+        message: passed 
+          ? `Perfect score! You earned the full ${finalRewardSats} Sats.` 
+          : `Good job! You got ${score}/${totalQuestions} correct and earned a partial reward of ${finalRewardSats} Sats.`,
+        passed,
+        score,
+        rewardEarned: finalRewardSats
+      };
+    });
   }
 }

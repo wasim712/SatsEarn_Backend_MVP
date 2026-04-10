@@ -171,11 +171,7 @@ export class AdminService {
       where: { id }
     });
   }
-
-
-
   // --- TASK MANAGEMENT ---
-
   static async addTaskToCampaign(campaignId: string, data: any) {
     // 1. Ensure the parent campaign exists
     const campaign = await this.getCampaignById(campaignId);
@@ -214,7 +210,6 @@ export class AdminService {
     if (!task) throw new Error("Task not found in this campaign");
     return task;
   }
-
   // UPDATE A TASK
   static async updateTask(campaignId: string, taskId: string, data: any) {
     // Verify it exists and belongs to this campaign before updating
@@ -240,10 +235,6 @@ export class AdminService {
       where: { id: taskId }
     });
   }
-
-  // Announcements
-  // --- ANNOUNCEMENT METHODS ---
-
   static async createAnnouncement(data: any) {
     return await prisma.announcement.create({ data });
   }
@@ -301,10 +292,6 @@ export class AdminService {
       data,
     });
   }
-  // **************************************************************
-  // --- SUBMISSION REVIEW MANAGEMENT ---
-  // **************************************************************
-
   // **************************************************************
   // --- SUBMISSION REVIEW MANAGEMENT ---
   // **************************************************************
@@ -500,6 +487,99 @@ export class AdminService {
         lastActivityAt: true,
       },
       orderBy: { createdAt: 'desc' }, // Newest users first
+    });
+  }
+  // **************************************************************
+  // --- DAILY QUIZ MANAGEMENT ---
+  // **************************************************************
+
+  static async createDailyQuiz(data: {
+    date: string;
+    title: string;
+    rewardSats: number;
+    questions: Array<{
+      questionText: string;
+      options: string[];
+      correctAnswer: string;
+      order: number;
+    }>;
+  }) {
+    const targetDate = new Date(data.date);
+
+    // 1. Check if a quiz already exists for this exact day
+    const existingQuiz = await prisma.dailyQuiz.findUnique({
+      where: { date: targetDate }
+    });
+
+    if (existingQuiz) {
+      throw new Error(`A quiz already exists for ${data.date}.`);
+    }
+
+    // 2. Nested Create: Saves the Quiz and the Questions together
+    const newQuiz = await prisma.dailyQuiz.create({
+      data: {
+        date: targetDate,
+        title: data.title,
+        rewardSats: data.rewardSats,
+        // The magic Prisma relation create
+        questions: {
+          create: data.questions.map(q => ({
+            questionText: q.questionText,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            order: q.order
+          }))
+        }
+      },
+      // Return the created questions in the response so we can verify it worked
+      include: {
+        questions: true 
+      }
+    });
+
+    return newQuiz;
+  }
+  // --- GET ALL QUIZZES ---
+  static async getAllDailyQuizzes() {
+    return await prisma.dailyQuiz.findMany({
+      orderBy: { date: 'desc' }, // Newest first
+      include: {
+        _count: {
+          select: { questions: true, attempts: true } // Quick stats for your Admin table
+        }
+      }
+    });
+  }
+
+  // --- GET SINGLE QUIZ ---
+  static async getDailyQuizById(id: string) {
+    const quiz = await prisma.dailyQuiz.findUnique({
+      where: { id },
+      include: { questions: { orderBy: { order: 'asc' } } }
+    });
+
+    if (!quiz) throw new Error("Quiz not found");
+    return quiz;
+  }
+
+  // --- UPDATE QUIZ DETAILS ---
+  static async updateDailyQuiz(id: string, data: { title?: string; rewardSats?: number; isActive?: boolean }) {
+    // Check if it exists first
+    await this.getDailyQuizById(id); 
+
+    return await prisma.dailyQuiz.update({
+      where: { id },
+      data
+    });
+  }
+
+  // --- DELETE QUIZ ---
+  static async deleteDailyQuiz(id: string) {
+    return await prisma.$transaction(async (tx) => {
+      await tx.quizAttempt.deleteMany({ where: { dailyQuizId: id } });
+      await tx.dailyQuiz.delete({ where: { id } });
+
+      return { message: "Quiz and all associated data permanently deleted." };
     });
   }
 }

@@ -30,3 +30,13 @@ export const submitQuizSchema = z.object({
     answers: z.array(z.string()).min(1, "At least one answer is required"),
   }),
 })
+export const submitDailyQuizSchema = z.object({
+  body: z.object({
+    answers: z.array(
+      z.object({
+        questionId: z.string().uuid("Invalid Question ID format"),
+        answer: z.string().min(1, "Answer cannot be empty"),
+      })
+    ).min(1, "You must submit at least one answer"),
+  }),
+});

@@ -73,3 +73,42 @@ export const updateAnnouncementSchema = z.object({
     isActive: z.boolean().optional(),
   }),
 });
+
+const quizQuestionSchema = z.object({
+  questionText: z.string().min(5, "Question must be at least 5 characters"),
+  options: z.array(z.string()).min(2, "Must provide at least 2 options").max(5, "Max 5 options allowed"),
+  correctAnswer: z.string(),
+  order: z.number().int().min(1)
+}).refine((data) => data.options.includes(data.correctAnswer), {
+  message: "The correctAnswer MUST be one of the provided options",
+  path: ["correctAnswer"] // Points the error exactly to the wrong field
+});
+
+export const createDailyQuizSchema = z.object({
+  body: z.object({
+    date: z.string().refine((val) => !isNaN(Date.parse(val)), {
+      message: "Invalid date format. Use YYYY-MM-DD",
+    }),
+    title: z.string().min(3),
+    rewardSats: z.number().int().positive().default(10),
+    questions: z.array(quizQuestionSchema).min(1, "A quiz must have at least 1 question")
+  })
+});
+// Validates the UUID in the URL for GetOne, Update, and Delete
+export const quizIdParamSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid Quiz ID format"),
+  }),
+});
+
+// Validates the body for the Update route
+export const updateDailyQuizSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid Quiz ID format"),
+  }),
+  body: z.object({
+    title: z.string().min(3).optional(),
+    rewardSats: z.number().int().positive().optional(),
+    isActive: z.boolean().optional(),
+  }).strict(),
+});
