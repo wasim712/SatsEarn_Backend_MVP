@@ -210,21 +210,11 @@ const { v4: uuidv4 } = await import('uuid');
 
         if (verifyError) throw new Error(`Invalid or expired reset token: ${verifyError.message}`);
         if (!verifyData.session) throw new Error("Could not establish secure session for reset.");
-
-        // Edge Case Fix: Using `supabase.auth.admin` requires the Service Role Key and is dangerous on the client/standard API.
-        // Instead, we use the temporary session granted by `verifyOtp` to update the password securely as the user.
-        
-        // 2. Set the temporary session explicitly
         await supabase.auth.setSession(verifyData.session);
-
-        // 3. Update the password
         const { error: updateError } = await supabase.auth.updateUser({
             password: newPassword
         });
-
         if (updateError) throw new Error(`Failed to update password: ${updateError.message}`);
-
-        // 4. (Optional but recommended) Sign the user out immediately forcing them to log in with the new password
         await supabase.auth.signOut();
 
         return { message: "Password updated successfully. Please log in with your new password." };
