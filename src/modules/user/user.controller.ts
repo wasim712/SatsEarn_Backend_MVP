@@ -71,28 +71,33 @@ export class UserController {
   // // --- PROOF SUBMISSION (MONEY IN) ---
   // // **************************************************************
 
-  // static async submitTaskProof(req: Request, res: Response) {
-  //   try {
-  //     const taskId = req.params.taskId as string;
-  //     const { screenshotUrl } = req.body;
+static async submitTaskProof(req: Request, res: Response) {
+    try {
+      const taskId = req.params.taskId as string;
+      const { screenshotUrl } = req.body;
 
-  //     if (!screenshotUrl) {
-  //       return res.status(400).json({ error: "screenshotUrl is required to submit a task." });
-  //     }
+      // Basic edge case validation
+      if (!screenshotUrl || !screenshotUrl.startsWith('http')) {
+        return res.status(400).json({ error: "A valid screenshotUrl is required." });
+      }
 
-  //     // Calls the massive transaction we wrote earlier: 
-  //     // 1. AI Verifier -> 2. Create Submission -> 3. Pay User -> 4. Pay Referrer
-  //     const result = await UserService.submitTask(req.user!.id, taskId, screenshotUrl);
+      const result = await UserService.submitTask(req.user!.id, taskId, screenshotUrl);
       
-  //     res.status(200).json({ 
-  //       message: "Proof submitted successfully!", 
-  //       submission: result 
-  //     });
-  //   } catch (error: any) {
-  //     // Return 400 for business logic errors (e.g., "Already submitted", "Budget reached")
-  //     res.status(400).json({ error: error.message });
-  //   }
-  // }
+      // Provide dynamic user feedback based on the AI's decision
+      let message = "Proof submitted successfully and is pending review.";
+      if (result.status === 'LOCKED_15D') {
+        message = "AI Verified! Your proof was auto-approved and funds have been added to your pending balance.";
+      } else if (result.status === 'REJECTED') {
+        message = `AI Verification Failed: ${result.rejectionReason}`;
+      }
+      
+      res.status(200).json({ message, submission: result });
+
+    } catch (error: any) {
+      // Catches Prisma transaction failures, double submissions, or campaign budget caps
+      res.status(400).json({ error: error.message });
+    }
+  }
   static async deleteAccount(req: Request, res: Response) {
     try {
       const result = await UserService.deleteAccount(req.user!.id);
@@ -142,6 +147,26 @@ export class UserController {
     try {
       const taskId = req.params.taskId as string;
       const result = await UserService.startTaskFlow(req.user!.id, taskId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+  // --- DAILY QUIZ CONTROLLERS ---
+  
+  static async getTodayQuiz(req: Request, res: Response) {
+    try {
+      const quiz = await UserService.getTodayQuiz(req.user!.id);
+      res.status(200).json(quiz);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  static async submitTodayQuiz(req: Request, res: Response) {
+    try {
+      const { answers } = req.body;
+      const result = await UserService.submitDailyQuiz(req.user!.id, answers);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

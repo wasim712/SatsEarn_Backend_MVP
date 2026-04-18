@@ -5,6 +5,7 @@ export const updateProfileSchema = z.object({
     fullName: z.string().min(2).optional(),
     twitterHandle: z.string().max(50).optional(),
     instagramHandle: z.string().max(50).optional(),
+    phone:z.string().max(10).optional(),
     telegramHandle: z.string().max(50).optional(),
     discordHandle: z.string().max(50).optional(),
   }),
@@ -30,3 +31,13 @@ export const submitQuizSchema = z.object({
     answers: z.array(z.string()).min(1, "At least one answer is required"),
   }),
 })
+export const submitDailyQuizSchema = z.object({
+  body: z.object({
+    answers: z.array(
+      z.object({
+        questionId: z.string().uuid("Invalid Question ID format"),
+        answer: z.string().min(1, "Answer cannot be empty"),
+      })
+    ).min(1, "You must submit at least one answer"),
+  }),
+});

@@ -53,6 +53,7 @@ enum TransactionType {
   WELCOME_BONUS
   PENALTY
   STREAK_BONUS
+  DAILY_QUIZ_REWARD
 }
 
 enum AnnouncementType {
@@ -77,7 +78,7 @@ model User {
   fullName         String?
   country          String?  
   dateOfBirth      DateTime?
-  
+  username         String   @unique
   // THE TRIPLE-BALANCE SYSTEM (Stored in Sats)
   balanceAvailable Int      @default(0) // Safe to withdraw
   balancePending   Int      @default(0) // Stuck in 24h or 15d lock
@@ -89,7 +90,7 @@ model User {
   level            Int      @default(0)
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())
-  
+  quizAttempts      QuizAttempt[]
   // Connected Social Accounts
   twitterHandle    String?
   instagramHandle  String?
@@ -266,4 +267,61 @@ model Announcement {
   
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+}
+// ==========================================
+// DAILY QUIZ GAMIFICATION ENGINE
+// ==========================================
+
+model DailyQuiz {
+  id          String   @id @default(uuid())
+  
+  // The specific calendar day for this quiz (Ensures only 1 quiz per day)
+  date        DateTime @unique @db.Date 
+  
+  title       String   // e.g., "Bitcoin Basics: The Halving"
+  rewardSats  Int      @default(10) // Small dopamine hit
+  isActive    Boolean  @default(true)
+
+  questions   QuizQuestion[]
+  attempts    QuizAttempt[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model QuizQuestion {
+  id            String   @id @default(uuid())
+  
+  dailyQuizId   String
+  dailyQuiz     DailyQuiz @relation(fields: [dailyQuizId], references: [id], onDelete: Cascade)
+  
+  questionText  String   @db.Text
+  options       String[] // ["21 Million", "Unlimited", "100 Million"]
+  correctAnswer String   
+  
+  order         Int      @default(0) 
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([dailyQuizId])
+}
+
+// Tracks who took the quiz so they can't double-dip
+model QuizAttempt {
+  id            String   @id @default(uuid())
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  
+  dailyQuizId   String
+  dailyQuiz     DailyQuiz @relation(fields: [dailyQuizId], references: [id])
+  
+  score         Int
+  passed        Boolean  // True if they got 100%
+
+  createdAt     DateTime @default(now())
+
+  // Critical: Prevents a user from submitting the same daily quiz twice
+  @@unique([userId, dailyQuizId]) 
 }

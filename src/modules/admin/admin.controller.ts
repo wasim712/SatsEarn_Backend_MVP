@@ -275,4 +275,64 @@ static async processWithdrawal(req: Request, res: Response) {
       res.status(500).json({ error: error.message });
     }
   }
+  // **************************************************************
+  // --- DAILY QUIZ CONTROLLERS ---
+  // **************************************************************
+
+  static async createDailyQuiz(req: Request, res: Response) {
+    try {
+      // req.body is already validated and typed perfectly by our Zod middleware
+      const quiz = await AdminService.createDailyQuiz(req.body);
+      
+      res.status(201).json({
+        message: "Daily Quiz created successfully!",
+        quiz
+      });
+    } catch (error: any) {
+      // Catch Prisma unique constraint errors or custom thrown errors
+      res.status(400).json({ error: error.message });
+    }
+  }
+  // --- GET ALL ---
+  static async getAllDailyQuizzes(req: Request, res: Response) {
+    try {
+      const quizzes = await AdminService.getAllDailyQuizzes();
+      res.status(200).json(quizzes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // --- GET SINGLE ---
+  static async getDailyQuiz(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const quiz = await AdminService.getDailyQuizById(id);
+      res.status(200).json(quiz);
+    } catch (error: any) {
+      res.status(404).json({ error: error.message });
+    }
+  }
+
+  // --- UPDATE ---
+  static async updateDailyQuiz(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const updatedQuiz = await AdminService.updateDailyQuiz(id, req.body);
+      res.status(200).json({ message: "Quiz updated", quiz: updatedQuiz });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  // --- DELETE ---
+  static async deleteDailyQuiz(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const result = await AdminService.deleteDailyQuiz(id);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
 }

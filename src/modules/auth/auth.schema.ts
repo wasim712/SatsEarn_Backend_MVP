@@ -40,3 +40,11 @@ export const resetPasswordSchema = z.object({
     newPassword: z.string().min(8, "Password must be at least 8 characters"),
   }),
 });
+export const checkUsername = z.object({
+  query: z.object({
+    username: z
+      .string()
+      .min(3, "Username too short")
+      .max(10, "Username cannot be greater than 10 characters"),
+  }),
+});
