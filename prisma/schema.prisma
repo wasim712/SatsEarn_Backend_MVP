@@ -15,11 +15,22 @@ enum Role {
   SUPER_ADMIN
 }
 
-enum Tier {
+// Free tiers are earned strictly via totalXp grinding
+enum FreeTier {
   BASIC
+  COPPER
   BRONZE
   SILVER
   GOLD
+}
+
+// Premium tiers are bought and sit "on top" of free tiers
+enum PremiumTier {
+  PLATINUM
+  DIAMOND
+  CROWN
+  ELITE
+  FOUNDER
 }
 
 enum TaskCategory {
@@ -69,44 +80,53 @@ enum AnnouncementType {
 
 model User {
   id               String   @id @default(uuid())
+  
+  // --- AUTHENTICATION (Includes Google OAuth Data) ---
   supabaseAuthId   String   @unique 
   email            String   @unique
+  authProvider     String   @default("EMAIL") // e.g., "GOOGLE", "EMAIL"
+  avatarUrl        String?  // Fetched from Google profile
+  
   phone            String?  @unique
   role             Role     @default(USER)
   
-  // Basic KYC
-  fullName         String?
+  // --- BASIC KYC ---
+  fullName         String?  // Pre-filled from Google OAuth
   country          String?  
   dateOfBirth      DateTime?
-  username         String   @unique
-  // THE TRIPLE-BALANCE SYSTEM (Stored in Sats)
+  username         String?  @unique // Made optional initially so Google Sync doesn't crash if missing
+
+  // --- THE TRIPLE-BALANCE SYSTEM (Stored in Sats) ---
   balanceAvailable Int      @default(0) // Safe to withdraw
   balancePending   Int      @default(0) // Stuck in 24h or 15d lock
   balanceLocked    Int      @default(0) // Welcome bonuses or special locked funds
 
-  // Gamification & Stats
-  tier             Tier     @default(BASIC)
-  xp               Int      @default(0)
-  level            Int      @default(0)
+  // --- GAMIFICATION & DUAL-TRACK TIERS ---
+  totalXp          Int      @default(0) // The ONLY source of truth for free level/tier
+  premiumTier      PremiumTier?         // Active paid tier overlay (Null for free users)
+  premiumExpiresAt DateTime?            // When the paid buff drops off
+
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())
-  quizAttempts      QuizAttempt[]
-  // Connected Social Accounts
+  
+  // --- CONNECTED SOCIAL ACCOUNTS ---
   twitterHandle    String?
   instagramHandle  String?
   telegramHandle   String?
   discordHandle    String?
 
-  // Referral System
+  // --- REFERRAL SYSTEM ---
   referralCode     String   @unique
   referredById     String?
   referredBy       User?    @relation("UserReferrals", fields: [referredById], references: [id])
   referrals        User[]   @relation("UserReferrals")
 
-  // Relations
+  // --- RELATIONS ---
   submissions      Submission[]
   withdrawals      Withdrawal[]
   transactions     Ledger[]     
+  quizAttempts     QuizAttempt[]
+  
   isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -145,7 +165,7 @@ model PlatformSettings {
   welcomeBonusSats     Int      @default(50)
   minWithdrawalSats    Int      @default(25000)
   securityLockDays     Int      @default(15)
-  referralBonusPercent Int      @default(5) 
+  referralBonusPercent Int      @default(5) // Default for Free users
   
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
@@ -166,9 +186,15 @@ model Campaign {
   targetUrl          String?
   socialHandleTarget String?      
   targetCountries    String[]     
-  requiredTier       Tier         @default(BASIC)
   
-  rewardSats         Int
+  // --- THE ACCESS GATES ---
+  requiredFreeTier   FreeTier     @default(BASIC) // E.g., "Must be at least Silver"
+  isPremiumOnly      Boolean      @default(false) // E.g., "Must hold ANY paid subscription"
+  
+  // --- THE ECONOMICS (Explicit Pricing Matrix) ---
+  baseRewardSats     Int          // The anchor for calculating referral commissions
+  tierRewardMatrix   Json         // Stores exact Sats for all 10 tiers e.g. {"BASIC": 10, ..., "FOUNDER": 50}
+  
   totalCompletions   Int          @default(0)
   maxCompletions     Int          
   
@@ -178,25 +204,28 @@ model Campaign {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
-  @@index([isActive, requiredTier]) 
+  @@index([isActive, isPremiumOnly, requiredFreeTier]) 
 }
 
 model Task {
-  id                 String       @id @default(uuid())
-  campaignId         String
-  campaign           Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id                       String       @id @default(uuid())
+  campaignId               String
+  campaign                 Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   
-  title              String?      
-  description        String?
-  targetUrl          String?
-  rewardSatsOverride Int?         
+  title                    String?      
+  description              String?
+  targetUrl                String?
   
-  // Flexible rules (e.g., {"minFollowers": 100})
-  requirements       Json?        
+  // Allows a specific task in a campaign to have a different economy than the campaign default
+  baseRewardSatsOverride   Int?         
+  tierRewardMatrixOverride Json?        
+  
+  // Flexible rules (e.g., {"minFollowers": 100}) for the AI Prompt
+  requirements             Json?        
 
-  submissions        Submission[]
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  submissions              Submission[]
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
 }
 
 // ------------------------------------------
@@ -211,7 +240,7 @@ model Submission {
   task             Task             @relation(fields: [taskId], references: [id])
   
   // Storage & Verification
-  screenshotUrl    String           
+  screenshotUrl    String            
   imageHash        String?          // For duplicate detection
   ocrExtractedText String?          @db.Text 
   
@@ -268,25 +297,26 @@ model Announcement {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 }
+
 // ==========================================
 // DAILY QUIZ GAMIFICATION ENGINE
 // ==========================================
 
 model DailyQuiz {
-  id          String   @id @default(uuid())
+  id         String   @id @default(uuid())
   
   // The specific calendar day for this quiz (Ensures only 1 quiz per day)
-  date        DateTime @unique @db.Date 
+  date       DateTime @unique @db.Date 
   
-  title       String   // e.g., "Bitcoin Basics: The Halving"
-  rewardSats  Int      @default(10) // Small dopamine hit
-  isActive    Boolean  @default(true)
+  title      String   // e.g., "Bitcoin Basics: The Halving"
+  rewardSats Int      @default(10) // Small dopamine hit
+  isActive   Boolean  @default(true)
 
-  questions   QuizQuestion[]
-  attempts    QuizAttempt[]
+  questions  QuizQuestion[]
+  attempts   QuizAttempt[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model QuizQuestion {
@@ -309,18 +339,18 @@ model QuizQuestion {
 
 // Tracks who took the quiz so they can't double-dip
 model QuizAttempt {
-  id            String   @id @default(uuid())
+  id          String   @id @default(uuid())
   
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   
-  dailyQuizId   String
-  dailyQuiz     DailyQuiz @relation(fields: [dailyQuizId], references: [id])
+  dailyQuizId String
+  dailyQuiz   DailyQuiz @relation(fields: [dailyQuizId], references: [id])
   
-  score         Int
-  passed        Boolean  // True if they got 100%
+  score       Int
+  passed      Boolean  // True if they got 100%
 
-  createdAt     DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   // Critical: Prevents a user from submitting the same daily quiz twice
   @@unique([userId, dailyQuizId]) 

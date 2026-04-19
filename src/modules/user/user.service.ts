@@ -5,6 +5,7 @@ import { supabase } from "../../external/supabase.client";
 import { calculateLevelAndTier } from "../../utils/gamification.util";
 import { AdminService } from "../admin/admin.service";
 import { AiVerificationService } from "../verification/verification.service";
+import { TierUtils } from "../../utils/tier.utils";
 export class UserService {
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
@@ -13,7 +14,7 @@ export class UserService {
     if (!user) throw new Error("User not found");
     return user;
   }
-  static async getUserDashboard(userId: string) {
+static async getUserDashboard(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -33,15 +34,32 @@ export class UserService {
 
     if (!user) throw new Error("User not found");
 
-    // Calculate dynamic progress
-    const { level, tier, progressToNextLevel } = calculateLevelAndTier(user.xp);
+    // --- DUAL-TRACK TIER LOGIC ---
+    // Safe cast for TierUtils if you typed it to accept the User model
+    const isPremium = TierUtils.isPremiumActive(user as any); 
+    const freeTier = TierUtils.getFreeTier(user.totalXp);
+    const activeTier = isPremium ? user.premiumTier : freeTier;
 
-    // If their calculated tier is higher than what's in the DB, upgrade them!
-    if (user.tier !== tier) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { tier },
-      });
+    // --- XP & LEVEL MATH ---
+    // Rule: 1,000 XP = 1 level. Max level = 200 (200,000 XP)
+    const maxXp = 200000;
+    const cappedXp = Math.min(user.totalXp, maxXp);
+    const level = Math.min(200, Math.floor(cappedXp / 1000) + 1);
+    
+    const nextLevelTotalXp = level * 1000; // e.g., if Level 14, next barrier is 14,000
+    const currentLevelProgressPercent = ((cappedXp % 1000) / 1000) * 100;
+    const isMaxLevel = cappedXp >= maxXp;
+
+    // --- FRONTEND DISPLAY STRINGS ---
+    let xpDisplay = "";
+    if (isPremium) {
+      // Premium rule: Show total XP only (no denominator)
+      xpDisplay = `${user.totalXp.toLocaleString()} XP`;
+    } else if (isMaxLevel) {
+      xpDisplay = `${maxXp.toLocaleString()} XP (MAX)`;
+    } else {
+      // Free rule: Show absolute cumulative format (13,500 / 13,999 XP)
+      xpDisplay = `${user.totalXp.toLocaleString()} / ${(nextLevelTotalXp - 1).toLocaleString()} XP`;
     }
 
     return {
@@ -53,11 +71,17 @@ export class UserService {
           user.balanceAvailable + user.balancePending + user.balanceLocked,
       },
       gamification: {
-        xp: user.xp,
-        level,
-        tier,
+        totalXp: user.totalXp,
+        // Premium rule: Hide level number for premium users to elevate status
+        level: isPremium ? null : level, 
+        activeTier, 
+        underlyingFreeTier: freeTier, // Allows the frontend to render "Free tier: Copper" 
+        isPremium,
+        premiumExpiresAt: user.premiumExpiresAt,
         currentStreak: user.currentStreak,
-        progressToNextLevel: `${progressToNextLevel}%`,
+        xpDisplay,
+        // If premium or maxed out, keep the progress bar full. Otherwise, show their grind.
+        progressPercent: isPremium || isMaxLevel ? 100 : currentLevelProgressPercent,
       },
       recentActivity: user.transactions,
     };
@@ -224,14 +248,13 @@ export class UserService {
     return campaign;
   }
 static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
-    // Note: If you don't have GamificationSettings yet, hardcode settings here or fetch from DB
     const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Fetch User (needed for Referral logic)
+      // 1. Fetch User (needed for Gamification & Referral logic)
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, referredById: true, fullName: true }
+        select: { id: true, referredById: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true }
       });
       if (!user) throw new Error("User not found.");
 
@@ -251,7 +274,7 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
       });
       if (existing) throw new Error("You have already submitted proof for this task.");
 
-      // 4. Run AI Verifier dynamically using the task requirements or description
+      // 4. Run AI Verifier dynamically using the task requirements
       const rulesContext = task.requirements || task.description || task.campaign.description;
       const aiResult = await AiVerificationService.analyzeProof(screenshotUrl, rulesContext);
 
@@ -276,45 +299,62 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
         }
       });
 
-      // 7. IF NOT REJECTED: Distribute the Sats to Pending Balances
+      // 7. IF NOT REJECTED: Distribute the Sats based on the EXPLICIT PRICING MATRIX
       if (determinedStatus !== SubmissionStatus.REJECTED) {
-        const reward = task.rewardSatsOverride || task.campaign.rewardSats;
+        
+        // --- NEW ECONOMICS ENGINE ---
+        const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
+        const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
+        
+        // Calculate what tier the user is right now
+        const hasPremium = TierUtils.isPremiumActive(user as any); // cast safely
+        const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+        
+        // Pull their exact explicit reward from the JSON matrix (Fallback to baseReward if undefined)
+        const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
 
         // --- A. PAY THE WORKER (To Pending Balance) ---
         await tx.user.update({
           where: { id: userId },
-          data: { balancePending: { increment: reward } }
+          data: { balancePending: { increment: workerReward } }
         });
 
         await tx.ledger.create({
           data: {
             userId,
-            amountSats: reward,
+            amountSats: workerReward,
             type: 'TASK_REWARD',
-            description: `Task Submitted: ${task.campaign.title} (Status: ${determinedStatus})`,
+            description: `Task: ${task.campaign.title} (Tier: ${activeTier})`,
             referenceId: submission.id
           }
         });
 
-        // --- B. PAY THE REFERRER ---
+        // --- B. PAY THE REFERRER (Anti-Inflation: Based on baseReward) ---
         if (user.referredById) {
-          const referralBonus = Math.floor(reward * (settings.referralBonusPercent / 100));
+          const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
+          
+          if (referrer) {
+            const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
+            
+            // MATH: Base Reward * Commission % (e.g., 100 Sats * 0.30 = 30 Sats)
+            const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
 
-          if (referralBonus > 0) {
-            await tx.user.update({
-              where: { id: user.referredById },
-              data: { balancePending: { increment: referralBonus } }
-            });
+            if (referralBonus > 0) {
+              await tx.user.update({
+                where: { id: referrer.id },
+                data: { balancePending: { increment: referralBonus } }
+              });
 
-            await tx.ledger.create({
-              data: {
-                userId: user.referredById,
-                amountSats: referralBonus,
-                type: 'REFERRAL_BONUS',
-                description: `Commission from ${user.fullName || 'a referred user'}`,
-                referenceId: submission.id
-              }
-            });
+              await tx.ledger.create({
+                data: {
+                  userId: referrer.id,
+                  amountSats: referralBonus,
+                  type: 'REFERRAL_BONUS',
+                  description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}`,
+                  referenceId: submission.id
+                }
+              });
+            }
           }
         }
 
@@ -326,7 +366,7 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
       }
 
       return submission;
-    }, { isolationLevel: 'Serializable' }); // Serializable locks this down to prevent race condition overspending
+    }, { isolationLevel: 'Serializable' }); 
   }
 
   static async getReferralDashboard(userId: string) {
@@ -450,12 +490,23 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
   // --- 5. LEARN & EARN: QUIZ VALIDATOR ---
   // **************************************************************
 
-  static async submitQuizTask(
+static async submitQuizTask(
     userId: string,
     taskId: string,
     userAnswers: string[],
   ) {
+    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
+
     return await prisma.$transaction(async (tx) => {
+      
+      // 1. Fetch User (Needed to calculate their active tier and referrals)
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, referredById: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true }
+      });
+      if (!user) throw new Error("User not found.");
+
+      // 2. Fetch Task & Enforce Campaign Budgets
       const task = await tx.task.findUnique({
         where: { id: taskId },
         include: { campaign: true },
@@ -464,8 +515,17 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
       if (!task || task.campaign.category !== "LEARN_EARN") {
         throw new Error("Invalid task or not a quiz module.");
       }
+      if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
+        throw new Error("This campaign has reached its maximum budget and is closed.");
+      }
 
-      // 1. Grade the Quiz (Requires the Admin to have saved { "answers": ["A", "C", "B"] } in the task.requirements JSON)
+      // 3. Prevent Double Submissions early
+      const existing = await tx.submission.findUnique({
+        where: { userId_taskId: { userId, taskId } },
+      });
+      if (existing) throw new Error("You already passed this quiz.");
+
+      // 4. Grade the Quiz (Requires Admin to have saved { "correctAnswers": ["A", "C", "B"] } in requirements)
       const rules = task.requirements as any;
       if (!rules || !rules.correctAnswers)
         throw new Error("Quiz answers not configured by admin.");
@@ -485,45 +545,84 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
         );
       }
 
-      // 2. If Passed, Create the Submission and bypass the 24h AI hold (since it's a math/quiz verification)
-      const existing = await tx.submission.findUnique({
-        where: { userId_taskId: { userId, taskId } },
-      });
-      if (existing) throw new Error("You already passed this quiz.");
+      // 5. --- NEW ECONOMICS ENGINE ---
+      const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
+      const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
+      
+      // Find out what tier the user is right now
+      const hasPremium = TierUtils.isPremiumActive(user as any); // Safe cast for the util
+      const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+      
+      // Pull their exact explicit reward from the JSON matrix
+      const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
 
-      const reward = task.rewardSatsOverride || task.campaign.rewardSats;
-
+      // 6. Create the Submission (Bypass 24h AI hold, go straight to 15-day lock)
       const submission = await tx.submission.create({
         data: {
           userId,
           taskId,
           screenshotUrl: "QUIZ_PASSED", // No screenshot needed
           confidenceScore: 100,
-          status: "LOCKED_15D", // Straight to 15-day security hold
+          status: SubmissionStatus.LOCKED_15D, 
           unlockAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
         },
       });
 
-      // 3. Update pending balance & Ledger (Referencing the logic we already built)
+      // 7. A. PAY THE WORKER (To Pending Balance)
       await tx.user.update({
         where: { id: userId },
-        data: { balancePending: { increment: reward } },
+        data: { balancePending: { increment: workerReward } },
       });
 
       await tx.ledger.create({
         data: {
           userId,
-          amountSats: reward,
+          amountSats: workerReward,
           type: "TASK_REWARD",
-          description: `Passed Quiz: ${task.campaign.title}`,
+          description: `Passed Quiz: ${task.campaign.title} (Tier: ${activeTier})`,
           referenceId: submission.id,
         },
       });
 
-      // Note: You would also call the 5% Referral logic here if you want it to apply to quizzes!
+      // 8. B. PAY THE REFERRER (Anti-Inflation: Based strictly on baseReward)
+      if (user.referredById) {
+        const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
+        
+        if (referrer) {
+          const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
+          const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
 
-      return { message: "Quiz passed successfully!", earned: reward };
-    });
+          if (referralBonus > 0) {
+            await tx.user.update({
+              where: { id: referrer.id },
+              data: { balancePending: { increment: referralBonus } }
+            });
+
+            await tx.ledger.create({
+              data: {
+                userId: referrer.id,
+                amountSats: referralBonus,
+                type: 'REFERRAL_BONUS',
+                description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}'s quiz`,
+                referenceId: submission.id
+              }
+            });
+          }
+        }
+      }
+
+      // 9. C. UPDATE CAMPAIGN STATS
+      await tx.campaign.update({
+        where: { id: task.campaign.id },
+        data: { totalCompletions: { increment: 1 } }
+      });
+
+      return { 
+        message: "Quiz passed successfully!", 
+        earned: workerReward, 
+        submissionId: submission.id 
+      };
+    }, { isolationLevel: 'Serializable' }); // Critical to prevent database race conditions on campaign limits
   }
   // **************************************************************
   // --- STREAK ENGINE & CLAIMS ---

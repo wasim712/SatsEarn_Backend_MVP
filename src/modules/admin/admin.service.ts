@@ -1,4 +1,5 @@
 import { prisma } from '../../db/prisma.client';
+import { TierUtils } from '../../utils/tier.utils';
 
 export class AdminService {
   static async getOverviewMetrics() {
@@ -46,7 +47,7 @@ export class AdminService {
     };
   }
   // Add this below the getOverviewMetrics method
-  static async createCampaign(data: any) {
+static async createCampaign(data: any) {
     const campaign = await prisma.campaign.create({
       data: {
         title: data.title,
@@ -54,12 +55,30 @@ export class AdminService {
         category: data.category,
         targetUrl: data.targetUrl,
         socialHandleTarget: data.socialHandleTarget,
-        rewardSats: data.rewardSats,
         maxCompletions: data.maxCompletions,
-        targetCountries: data.targetCountries,
-        requiredTier: data.requiredTier,
+        targetCountries: data.targetCountries || [],
+        
+        // --- THE NEW ACCESS GATES ---
+        isPremiumOnly: data.isPremiumOnly || false,
+        requiredFreeTier: data.requiredFreeTier || 'BASIC',
+        
+        // --- THE NEW ECONOMICS ---
+        baseRewardSats: data.baseRewardSats,
+        // Prisma accepts standard JS objects for JSON fields
+        tierRewardMatrix: data.tierRewardMatrix, 
         
         // This automatically creates 1 default task associated with this campaign
+        tasks: {
+          create: [
+            {
+              title: `Complete: ${data.title}`,
+              description: data.description,
+              targetUrl: data.targetUrl,
+              // We leave requirements null so it falls back to the campaign defaults, 
+              // but you can inject AI JSON rules here if you pass them!
+            }
+          ]
+        }
       },
       // Include the created tasks in the response so we can see the generated Task ID
       include: {
@@ -70,59 +89,46 @@ export class AdminService {
     return campaign;
   }
   // Add this below your createCampaign method
-  static async getCampaignAnalytics(campaignId: string) {
-    // 1. Verify the campaign exists
+static async getCampaignAnalytics(campaignId: string) {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId }
     });
     if (!campaign) throw new Error("Campaign not found");
 
-    // 2. Fetch all submissions for tasks belonging to this campaign
-    // We only select the specific fields we need to save memory
     const submissions = await prisma.submission.findMany({
       where: { task: { campaignId: campaignId } },
       select: {
         status: true,
         submittedAt: true,
         user: {
-          select: { country: true, tier: true }
+          // UPDATE: Replaced `tier` with the new Dual-Track fields
+          select: { country: true, totalXp: true, premiumTier: true, premiumExpiresAt: true }
         }
       }
     });
 
-    // 3. Initialize our analytical counters
     const analytics = {
       totalSubmissions: submissions.length,
-      statusCounts: {
-        verified: 0, // LOCKED_15D or WITHDRAWABLE
-        pending: 0,  // PENDING_24H or MANUAL_REVIEW
-        rejected: 0  // REJECTED
-      },
+      statusCounts: { verified: 0, pending: 0, rejected: 0 },
       geographicDistribution: {} as Record<string, number>,
       tierDistribution: {} as Record<string, number>,
-      timeOfDayPatterns: {} as Record<string, number> // 0-23 hours
+      timeOfDayPatterns: {} as Record<string, number> 
     };
 
-    // 4. Process the data in a single fast loop
     for (const sub of submissions) {
-      // Status Count
-      if (['LOCKED_15D', 'WITHDRAWABLE'].includes(sub.status)) {
-        analytics.statusCounts.verified++;
-      } else if (['PENDING_24H', 'MANUAL_REVIEW'].includes(sub.status)) {
-        analytics.statusCounts.pending++;
-      } else if (sub.status === 'REJECTED') {
-        analytics.statusCounts.rejected++;
-      }
+      if (['LOCKED_15D', 'WITHDRAWABLE'].includes(sub.status)) analytics.statusCounts.verified++;
+      else if (['PENDING_24H', 'MANUAL_REVIEW'].includes(sub.status)) analytics.statusCounts.pending++;
+      else if (sub.status === 'REJECTED') analytics.statusCounts.rejected++;
 
-      // Geographic Distribution
       const country = sub.user.country || 'Unknown';
       analytics.geographicDistribution[country] = (analytics.geographicDistribution[country] || 0) + 1;
 
-      // Tier Distribution
-      const tier = sub.user.tier;
-      analytics.tierDistribution[tier] = (analytics.tierDistribution[tier] || 0) + 1;
+      // UPDATE: Dynamically calculate the tier for the chart
+      const hasPremium = TierUtils.isPremiumActive(sub.user as any);
+      const activeTier = hasPremium ? sub.user.premiumTier : TierUtils.getFreeTier(sub.user.totalXp);
+      
+      analytics.tierDistribution[activeTier as string] = (analytics.tierDistribution[activeTier as string] || 0) + 1;
 
-      // Time-of-day Pattern (0 - 23 based on UTC hour)
       const hour = sub.submittedAt.getUTCHours().toString();
       analytics.timeOfDayPatterns[hour] = (analytics.timeOfDayPatterns[hour] || 0) + 1;
     }
@@ -172,9 +178,10 @@ export class AdminService {
     });
   }
   // --- TASK MANAGEMENT ---
-  static async addTaskToCampaign(campaignId: string, data: any) {
+static async addTaskToCampaign(campaignId: string, data: any) {
     // 1. Ensure the parent campaign exists
-    const campaign = await this.getCampaignById(campaignId);
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign) throw new Error("Campaign not found.");
 
     // 2. Create the child task
     return await prisma.task.create({
@@ -183,7 +190,18 @@ export class AdminService {
         title: data.title,
         description: data.description,
         targetUrl: data.targetUrl,
-        // If no specific reward is set for this task, it inherits the campaign's reward (if your schema supports this logic)
+        
+        // --- NEW ECONOMICS (Optional Overrides) ---
+        // If left null, the Submission Engine will automatically fall back 
+        // to the Campaign's baseRewardSats and tierRewardMatrix.
+        baseRewardSatsOverride: data.baseRewardSatsOverride || null,
+        tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
+        
+        // --- AI VERIFIER & QUIZ RULES ---
+        // Crucial for Dynamic Context Injection! 
+        // Admin passes structured JSON like: {"mustShow": "Subscribed button"} 
+        // or {"correctAnswers": ["A", "B", "C"]}
+        requirements: data.requirements || null,
       }
     });
   }
@@ -296,34 +314,50 @@ export class AdminService {
   // --- SUBMISSION REVIEW MANAGEMENT ---
   // **************************************************************
 
-  static async getPendingSubmissions() {
-    return await prisma.submission.findMany({
+static async getPendingSubmissions() {
+    const submissions = await prisma.submission.findMany({
       where: { status: 'MANUAL_REVIEW' },
       include: {
-        // Removed trustScore, added isActive to see if the user was soft-deleted
         user: { 
+          // UPDATE: Replaced `tier`
           select: { 
             email: true, 
             fullName: true, 
-            tier: true,
+            totalXp: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
             isActive: true 
           } 
         },
-        // Included the task override reward in case this specific task pays differently
         task: { 
           select: {
             title: true,
             rewardSatsOverride: true,
             campaign: { 
-              select: { title: true, rewardSats: true } 
+              select: { title: true, baseRewardSats: true } 
             }
           } 
         }
       },
-      orderBy: { submittedAt: 'asc' } // Review oldest submissions first
+      orderBy: { submittedAt: 'asc' } 
+    });
+
+    // Clean up the data for the Admin UI
+    return submissions.map(sub => {
+      const hasPremium = TierUtils.isPremiumActive(sub.user as any);
+      return {
+        ...sub,
+        user: {
+          ...sub.user,
+          activeTier: hasPremium ? sub.user.premiumTier : TierUtils.getFreeTier(sub.user.totalXp),
+          isPremium: hasPremium
+        }
+      };
     });
   }
-  static async reviewSubmission(submissionId: string, status: 'PENDING_24H' | 'REJECTED', rejectionReason?: string, adminId?: string) {
+static async reviewSubmission(submissionId: string, status: 'LOCKED_15D' | 'REJECTED', rejectionReason?: string, adminId?: string) {
+    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
+
     return await prisma.$transaction(async (tx) => {
       // 1. Fetch submission with relationships
       const submission = await tx.submission.findUnique({
@@ -337,57 +371,72 @@ export class AdminService {
       if (!submission) throw new Error("Submission not found");
       if (submission.status !== 'MANUAL_REVIEW') throw new Error(`Cannot review submission with status: ${submission.status}`);
 
-      // 2. IF APPROVED: Just update the status to move it forward in the pipeline
+      // 2. IF APPROVED: Move it to the security lock and start the 15-day countdown clock
       // (The Sats were already added to balancePending when it was initially submitted)
-      if (status === 'PENDING_24H') {
+      if (status === 'LOCKED_15D') {
         return await tx.submission.update({
           where: { id: submissionId },
           data: { 
-            status: 'PENDING_24H',
+            status: 'LOCKED_15D',
+            unlockAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // Start the 15-day timer right now
             reviewedById: adminId 
           }
         });
       }
 
-      // 3. IF REJECTED: We must CLAW BACK the pending funds from the worker AND the referrer
+      // 3. IF REJECTED: We must CLAW BACK the pending funds using the exact Matrix Math
       if (status === 'REJECTED') {
-        const reward = submission.task.rewardSatsOverride || submission.task.campaign.rewardSats;
+        
+        // --- RECONSTRUCT THE ECONOMICS MATH ---
+        const baseReward = submission.task.baseRewardSatsOverride || submission.task.campaign.baseRewardSats;
+        const rewardMatrix: any = submission.task.tierRewardMatrixOverride || submission.task.campaign.tierRewardMatrix;
+        
+        const hasPremium = TierUtils.isPremiumActive(submission.user as any);
+        const activeTier = hasPremium ? submission.user.premiumTier : TierUtils.getFreeTier(submission.user.totalXp);
+        
+        const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
 
         // A. Reverse User's Pending Balance
         await tx.user.update({
           where: { id: submission.userId },
-          data: { balancePending: { decrement: reward } }
+          data: { balancePending: { decrement: workerReward } }
         });
 
         // B. Log the reversal in the Ledger
         await tx.ledger.create({
           data: {
             userId: submission.userId,
-            amountSats: -reward,
+            amountSats: -workerReward,
             type: 'PENALTY', // Standardized type for reversals
             description: `Submission Rejected: ${rejectionReason || 'Failed manual review'}`,
             referenceId: submission.id
           }
         });
 
-        // C. Check if we need to claw back a referral bonus
-        const settings = await this.getGamificationSettings();
+        // C. Claw back the referral bonus (Anti-Inflation: Based on baseReward)
         if (submission.user.referredById) {
-          const referralBonus = Math.floor(reward * (settings.referralBonusPercent / 100));
-          if (referralBonus > 0) {
-            await tx.user.update({
-              where: { id: submission.user.referredById },
-              data: { balancePending: { decrement: referralBonus } }
-            });
-            await tx.ledger.create({
-              data: {
-                userId: submission.user.referredById,
-                amountSats: -referralBonus,
-                type: 'PENALTY',
-                description: `Referral bonus reversed for rejected task`,
-                referenceId: submission.id
-              }
-            });
+          const referrer = await tx.user.findUnique({ where: { id: submission.user.referredById } });
+          
+          if (referrer) {
+            const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
+            const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
+            
+            if (referralBonus > 0) {
+              await tx.user.update({
+                where: { id: referrer.id },
+                data: { balancePending: { decrement: referralBonus } }
+              });
+              
+              await tx.ledger.create({
+                data: {
+                  userId: referrer.id,
+                  amountSats: -referralBonus,
+                  type: 'PENALTY',
+                  description: `Referral bonus reversed for rejected task`,
+                  referenceId: submission.id
+                }
+              });
+            }
           }
         }
 
@@ -401,20 +450,32 @@ export class AdminService {
           }
         });
       }
-    });
+    }, { isolationLevel: 'Serializable' }); // Keep it serializable to prevent balance race conditions
   }
 
   // **************************************************************
   // --- WITHDRAWAL (PAYOUT) MANAGEMENT ---
   // **************************************************************
 
-  static async getPendingWithdrawals() {
-    return await prisma.withdrawal.findMany({
+static async getPendingWithdrawals() {
+    const withdrawals = await prisma.withdrawal.findMany({
       where: { status: 'PENDING' },
       include: {
-        user: { select: { email: true, fullName: true, tier: true } }
+        // UPDATE: Replaced `tier`
+        user: { select: { email: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true } }
       },
-      orderBy: { createdAt: 'asc' } // Pay the oldest requests first
+      orderBy: { createdAt: 'asc' }
+    });
+
+    return withdrawals.map(w => {
+      const hasPremium = TierUtils.isPremiumActive(w.user as any);
+      return {
+        ...w,
+        user: {
+          ...w.user,
+          activeTier: hasPremium ? w.user.premiumTier : TierUtils.getFreeTier(w.user.totalXp)
+        }
+      };
     });
   }
 
@@ -464,29 +525,42 @@ export class AdminService {
       }
     });
   }
-  static async getAllUsers() {
-    return await prisma.user.findMany({
+static async getAllUsers() {
+    const users = await prisma.user.findMany({
       select: {
         id: true,
         email: true,
         fullName: true,
         role: true,
-        tier: true,
-        xp: true,
+        // UPDATE: Removed `tier` and `xp`, added the new ones
+        totalXp: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
         isActive: true,
-        // Balances
         balanceAvailable: true,
         balancePending: true,
         balanceLocked: true,
-        // Referral stats
         referralCode: true,
         _count: {
-          select: { referrals: true, submissions: true } // Quick stats for the table
+          select: { referrals: true, submissions: true } 
         },
         createdAt: true,
         lastActivityAt: true,
       },
-      orderBy: { createdAt: 'desc' }, // Newest users first
+      orderBy: { createdAt: 'desc' }, 
+    });
+
+    // Calculate the display data for the Admin Table
+    return users.map(user => {
+      const isPremium = TierUtils.isPremiumActive(user as any);
+      const freeTier = TierUtils.getFreeTier(user.totalXp);
+      
+      return {
+        ...user,
+        activeTier: isPremium ? user.premiumTier : freeTier,
+        isPremium,
+        underlyingFreeTier: freeTier // Helpful for admins to see what tier they drop to if premium expires
+      };
     });
   }
   // **************************************************************

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { UserService } from './user.service';
+import { SubmissionStatus } from '@prisma/client';
 
 export class UserController {
   static async getDashboard(req: Request, res: Response) {
@@ -81,13 +82,15 @@ static async submitTaskProof(req: Request, res: Response) {
         return res.status(400).json({ error: "A valid screenshotUrl is required." });
       }
 
+      // Calls the massive transaction in the Service
       const result = await UserService.submitTask(req.user!.id, taskId, screenshotUrl);
       
       // Provide dynamic user feedback based on the AI's decision
-      let message = "Proof submitted successfully and is pending review.";
-      if (result.status === 'LOCKED_15D') {
+      let message = "Proof submitted successfully and is pending manual review.";
+      
+      if (result.status === SubmissionStatus.LOCKED_15D) {
         message = "AI Verified! Your proof was auto-approved and funds have been added to your pending balance.";
-      } else if (result.status === 'REJECTED') {
+      } else if (result.status === SubmissionStatus.REJECTED) {
         message = `AI Verification Failed: ${result.rejectionReason}`;
       }
       
