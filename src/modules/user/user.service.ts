@@ -1,7 +1,6 @@
 import { SubmissionStatus } from "@prisma/client";
+import bcrypt from 'bcryptjs'
 import { prisma } from "../../db/prisma.client";
-import { supabaseAdmin } from "../../external/supabase.admin";
-import { supabase } from "../../external/supabase.client";
 import { calculateLevelAndTier } from "../../utils/gamification.util";
 import { AdminService } from "../admin/admin.service";
 import { AiVerificationService } from "../verification/verification.service";
@@ -139,53 +138,58 @@ static async getUserDashboard(userId: string) {
   // 🔒 SECURITY
   // ==========================================
 
-  static async changePassword(userId: string, newPassword: string) {
-    // 1. Get the user's Supabase Auth ID
+static async changePassword(userId: string, newPassword: string) {
+    // 1. Verify the user exists and is active
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { supabaseAuthId: true },
     });
 
-    if (!user) throw new Error("User not found");
+    if (!user || !user.isActive) {
+      throw new Error("User not found or deactivated.");
+    }
 
-    // 2. Use the Supabase Admin API to securely force a password change
-    const { error } = await supabase.auth.admin.updateUserById(
-      user.supabaseAuthId,
-      { password: newPassword },
-    );
+    // 2. Cryptographically hash the new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    if (error) throw new Error(`Password update failed: ${error.message}`);
+    // 3. Save the new hash to your Neon Database
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
 
-    return { message: "Password updated successfully" };
+    return { message: "Password updated successfully." };
   }
-  static async deleteAccount(userId: string) {
+static async deleteAccount(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
     if (!user.isActive) throw new Error("Account is already deleted");
 
-    // 1. Destroy the Login (Hard delete in Supabase Auth)
-    // This immediately revokes their tokens and prevents them from ever logging in again.
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(
-      user.supabaseAuthId,
-    );
-    if (error && !error.message.includes("not found")) {
-      throw new Error(`Auth deletion failed: ${error.message}`);
-    }
-
-    // 2. The Soft Delete & Anonymize (In Prisma)
+    // The Soft Delete & Anonymize (In Prisma)
+    // We scramble their data so they can never log in again, 
+    // while keeping their ID intact so foreign keys (Ledger, Submissions) don't break.
     const scrambledStr = `deleted_${Date.now()}`;
 
     await prisma.user.update({
       where: { id: userId },
       data: {
         isActive: false, // THE SOFT DELETE FLAG
-        email: `${scrambledStr}@deleted.com`, // Wipe PII
-        supabaseAuthId: scrambledStr, // Break the auth link permanently
-        fullName: "Deleted User", // Wipe PII
+        
+        // --- DESTROY LOGIN CAPABILITIES ---
+        email: `${scrambledStr}@deleted.com`, 
+        passwordHash: null, 
+        otpCode: null,
+        otpExpiresAt: null,
+        
+        // --- WIPE PII & FREE UP UNIQUE FIELDS ---
+        username: scrambledStr, // Frees up the username for new users
+        fullName: "Deleted User", 
         phone: null,
         twitterHandle: null,
+        instagramHandle: null,
+        telegramHandle: null,
         discordHandle: null,
-        referralCode: scrambledStr, // Frees up their referral code for someone else
+        
+        referralCode: scrambledStr, // Frees up their referral code
       },
     });
 

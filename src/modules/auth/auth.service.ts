@@ -1,10 +1,11 @@
-import { supabase } from '../../external/supabase.client';
+import { uuid } from 'zod';
 import { prisma } from '../../db/prisma.client';
 import { AdminService } from '../admin/admin.service'; 
-import { EmailService } from './email.service'; // Integrated Resend
+import { EmailService } from './email.service'; 
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 // import { v4 as uuidv4 } from 'uuid';
 
-// 1️⃣ Type Definitions for better strictness
 export interface SignUpInput {
     email: string;
     password: string;
@@ -14,228 +15,272 @@ export interface SignUpInput {
     referralCode?: string;
     username: string;
 }
+
 export class AuthService {
     
+    // Helper to generate a 6-digit OTP
+    private static generateOTP(): string {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    // Helper to issue JWT session tokens
+    private static generateToken(userId: string, role: string): string {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) throw new Error("JWT_SECRET is not defined in environment variables.");
+        return jwt.sign({ userId, role }, secret, { expiresIn: '7d' }); // 7-day session
+    }
+
     // ==========================================
-    // 1. SIGN UP
+    // 1. SIGN UP (Generate User & OTP)
     // ==========================================
-    static async signUp(data: SignUpInput) {
-        // Edge Case Handling: Sanitize inputs to prevent case-sensitivity bugs
+static async signUp(data: SignUpInput) {
         const email = data.email.trim().toLowerCase();
         const username = data.username.trim().toLowerCase();
         const referralCode = data.referralCode?.trim().toUpperCase();
 
-        // 1. Check if username already exists in DB
-        const existingUsername = await prisma.user.findUnique({
-            where: { username },
+        // 1. Check existing users
+        const existingUser = await prisma.user.findFirst({
+            where: { OR: [{ email }, { username }] }
         });
-        const existingEmail = await prisma.user.findUnique({
-            where : {email}
-        })
-        if (existingEmail) {
-            throw new Error("Email already taken. Please choose another.");
+
+        if (existingUser) {
+            // If the EMAIL matches:
+            if (existingUser.email === email) {
+                if (existingUser.isVerified) {
+                    throw new Error("Email already registered. Please log in.");
+                }
+                
+                // Account exists but is UNVERIFIED. 
+                // Act as a "Resend OTP" + "Update Info" flow.
+                const newPasswordHash = await bcrypt.hash(data.password, 10);
+                const newOtpCode = this.generateOTP();
+                const newOtpExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+                await prisma.user.update({
+                    where: { id: existingUser.id },
+                    data: {
+                        passwordHash: newPasswordHash, // Update in case they changed their mind on the password
+                        fullName: data.fullName,       // Update in case they fixed a typo
+                        otpCode: newOtpCode,
+                        otpExpiresAt: newOtpExpiresAt
+                    }
+                });
+
+                await EmailService.sendVerificationEmail(email, newOtpCode);
+
+                return { message: "Account was unverified. A fresh verification code has been sent to your email!" };
+            }
+            
+            // If the email didn't match, it means the USERNAME matched:
+            if (existingUser.username === username) {
+                throw new Error("Username already taken.");
+            }
         }
 
-        if (existingUsername) {
-            throw new Error("Username already taken. Please choose another.");
-        }
-
-        // 2. Validate referral code (if provided)
-        let referrerId = null;
+        // ==========================================
+        // 2. BRAND NEW USER FLOW
+        // ==========================================
+        
+        // Validate Referral Code
+        let referredById = null;
         if (referralCode) {
-            const referrer = await prisma.user.findUnique({
-                where: { referralCode },
-                select: { id: true } // Optimization: Only fetch the ID
-            });
-
-            if (!referrer) {
-                throw new Error("Invalid referral code provided.");
-            }
-            referrerId = referrer.id;
+            const referrer = await prisma.user.findUnique({ where: { referralCode } });
+            if (!referrer) throw new Error("Invalid referral code provided.");
+            referredById = referrer.id;
         }
 
-        // 3. Proceed with Supabase Auth
-        const { data: authData, error } = await supabase.auth.signUp({
-            email,
-            password: data.password,
-            options: {
-                data: { 
-                    fullName: data.fullName, 
-                    country: data.country, 
-                    dateOfBirth: data.dateOfBirth, 
-                    referralCode, // Storing the code they used, not their new one
-                    username 
-                },
-            },
+        // Hash Password & Generate OTP
+        const passwordHash = await bcrypt.hash(data.password, 10);
+        const otpCode = this.generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // Expires in 15 mins
+        
+        const { v4: uuidv4 } = await import('uuid');
+        
+        // Save Unverified User to Database
+        const newUser = await prisma.user.create({
+            data: {
+                email,
+                passwordHash,
+                fullName: data.fullName,
+                username,
+                country: data.country,
+                dateOfBirth: new Date(data.dateOfBirth),
+                referralCode: uuidv4().substring(0, 8).toUpperCase(),
+                referredById,
+                isVerified: false, 
+                otpCode,
+                otpExpiresAt
+            }
         });
 
-        if (error) {
-            // Edge Case: User exists in Supabase but didn't verify email previously
-            if (error.message.toLowerCase().includes("already registered")) {
-                 throw new Error("Email is already registered. Try logging in or resetting your password.");
-            }
-            throw new Error(error.message);
-        }
-
-        // 4. Safe OTP Resend Fallback
-        // Wrap in try-catch so rate-limit errors on resend don't break the signup flow
-        try {
-            await supabase.auth.resend({ type: 'signup', email });
-        } catch (resendError) {
-            console.warn("OTP Resend skipped/failed (likely rate-limited):", resendError);
-        }
+        // Fire Email via Resend
+        await EmailService.sendVerificationEmail(newUser.email, otpCode);
 
         return { message: "Account created! Please check your email for the verification code." };
     }
-
-
     // ==========================================
-    // 2. VERIFY OTP & CREATE DB RECORD
+    // 2. VERIFY OTP (Activate & Login)
     // ==========================================
     static async verifyOtp(email: string, token: string) {
         const cleanEmail = email.trim().toLowerCase();
 
-        // 1. Verify token with Supabase
-        const { data: authData, error } = await supabase.auth.verifyOtp({
-            email: cleanEmail,
-            token,
-            type: 'email',
-        });
+        const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+        if (!user) throw new Error("User not found.");
+        if (user.isVerified) throw new Error("Account is already verified. Please log in.");
 
-        if (error) throw new Error(`Verification failed: ${error.message}`);
-
-        const supabaseUser = authData.user;
-        if (!supabaseUser || !authData.session) {
-            throw new Error("Verification successful, but session could not be established.");
+        // 1. Validate OTP
+        if (user.otpCode !== token) throw new Error("Invalid verification code.");
+        if (!user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+            throw new Error("Verification code expired. Please request a new one.");
         }
 
-        // 2. Check if DB user already exists (idempotency check)
-        let dbUser = await prisma.user.findUnique({
-            where: { supabaseAuthId: supabaseUser.id },
-        });
+        // 2. Fetch Gamification Settings for Welcome Bonus
+        const settings = await AdminService.getGamificationSettings().catch(() => ({ welcomeBonusSats: 0 }));
 
-        // 3. If no DB user, we initialize them now
-        if (!dbUser) {
-            const meta = supabaseUser.user_metadata;
-
-            // Fetch dynamic settings & handle referrals
-            const settings = await AdminService.getGamificationSettings().catch(() => ({ welcomeBonusSats: 0 })); // Fallback if admin settings fail
-            
-            let referredById = null;
-            if (meta.referralCode) {
-                const referrer = await prisma.user.findUnique({ where: { referralCode: meta.referralCode } });
-                if (referrer) referredById = referrer.id;
+        // 3. Activate User & Grant Bonus
+        const activatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                isVerified: true,
+                otpCode: null, // Clear the OTP security fields
+                otpExpiresAt: null,
+                balanceLocked: settings.welcomeBonusSats
             }
-const { v4: uuidv4 } = await import('uuid');
-            // Create user in Prisma safely using upsert to avoid race conditions
-            dbUser = await prisma.user.upsert({
-                where: { supabaseAuthId: supabaseUser.id },
-                update: {}, // Do nothing if they magically exist already
-                create: {
-                    supabaseAuthId: supabaseUser.id,
-                    email: supabaseUser.email!,
-                    fullName: meta.fullName || 'Unknown',
-                    username: meta.username,
-                    country: meta.country || 'Unknown',
-                    dateOfBirth: new Date(meta.dateOfBirth),
-                    referralCode: uuidv4().substring(0, 8).toUpperCase(), // Generate their unique code
-                    xp: 0,
-                    tier: 'BASIC',
-                    balanceLocked: settings.welcomeBonusSats,
-                    referredById,
-                },
-            });
+        });
 
-            // 4. Fire custom Resend Welcome Email asynchronously
-            // We DO NOT await this. It runs in the background so it doesn't delay the API response
-            EmailService.sendWelcomeEmail(dbUser.email, dbUser.fullName ?? 'Sats Earner', settings.welcomeBonusSats)
-                .catch(err => console.error("Failed to send welcome email:", err));
-        }
+        // 4. Fire Welcome Email
+        EmailService.sendWelcomeEmail(activatedUser.email, activatedUser.fullName ?? 'Sats Earner', settings.welcomeBonusSats)
+            .catch(err => console.error("Failed to send welcome email:", err));
 
-        return { session: authData.session, user: dbUser };
+        // 5. Generate Session Token
+        const sessionToken = this.generateToken(activatedUser.id, activatedUser.role);
+
+        return { session: sessionToken, user: activatedUser };
     }
-
 
     // ==========================================
     // 3. SIGN IN
     // ==========================================
     static async signIn(email: string, password: string) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email: email.trim().toLowerCase(),
-            password,
+        const user = await prisma.user.findUnique({
+            where: { email: email.trim().toLowerCase() }
         });
 
-        if (error) throw new Error(`Login failed: ${error.message}`);
-
-        const dbUser = await prisma.user.findUnique({
-            where: { supabaseAuthId: data.user.id },
-        });
-
-        // Edge Case: Supabase verified them, but DB creation failed during `verifyOtp` crash
-        if (!dbUser) {
-            // Log them out of Supabase to prevent ghost sessions
-            await supabase.auth.signOut();
-            throw new Error("Account setup incomplete. Please contact support.");
+        if (!user || !user.passwordHash) {
+            throw new Error("Invalid email or password.");
         }
 
-        return { session: data.session, user: dbUser };
+        if (!user.isVerified) {
+            throw new Error("Please verify your email address before logging in.");
+        }
+
+        const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+        if (!isValidPassword) throw new Error("Invalid email or password.");
+
+        const sessionToken = this.generateToken(user.id, user.role);
+
+        return { session: sessionToken, user };
     }
 
+    // ==========================================
+    // 4. RESEND OTP (The UX Fix)
+    // ==========================================
+    static async resendSignupOtp(email: string) {
+        const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+        
+        if (!user) throw new Error("User not found.");
+        if (user.isVerified) throw new Error("Account is already verified.");
+
+        const otpCode = this.generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { otpCode, otpExpiresAt }
+        });
+
+        await EmailService.sendVerificationEmail(user.email, otpCode);
+
+        return { message: "A new verification code has been sent to your email." };
+    }
 
     // ==========================================
-    // 4. PASSWORD RESET FLOW
+    // 5. PASSWORD RESET FLOW
     // ==========================================
     static async requestPasswordReset(email: string) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+        const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
         
-        if (error) {
-            // Security Edge Case: Don't reveal if an email exists or not to prevent user enumeration attacks
-            if (error.message.includes("User not found")) {
-                console.warn(`Password reset requested for non-existent email: ${email}`);
-                return { message: "If an account exists, a password reset email has been sent." };
-            }
-            throw new Error(error.message);
-        }
-        
-        return { message: "If an account exists, a password reset email has been sent." };
+        // Security check: Don't leak whether the email exists
+        if (!user) return { message: "If an account exists, a password reset code has been sent." };
+
+        const otpCode = this.generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { otpCode, otpExpiresAt }
+        });
+
+        // Add a method in your EmailService specifically for password reset templates
+        await EmailService.sendPasswordResetEmail(user.email, otpCode);
+
+        return { message: "If an account exists, a password reset code has been sent." };
     }
 
     static async resetPassword(email: string, token: string, newPassword: string) {
-        // 1. Verify the recovery OTP. This generates a temporary session.
-        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-            email: email.trim().toLowerCase(),
-            token,
-            type: 'recovery',
+        const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+        if (!user) throw new Error("Invalid request."); // Generic error for security
+
+        if (user.otpCode !== token || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+            throw new Error("Invalid or expired reset code.");
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                passwordHash,
+                otpCode: null,
+                otpExpiresAt: null
+            }
         });
 
-        if (verifyError) throw new Error(`Invalid or expired reset token: ${verifyError.message}`);
-        if (!verifyData.session) throw new Error("Could not establish secure session for reset.");
-        await supabase.auth.setSession(verifyData.session);
-        const { error: updateError } = await supabase.auth.updateUser({
-            password: newPassword
-        });
-        if (updateError) throw new Error(`Failed to update password: ${updateError.message}`);
-        await supabase.auth.signOut();
-
-        return { message: "Password updated successfully. Please log in with your new password." };
+        return { message: "Password updated successfully. Please log in." };
     }
-
-
     // ==========================================
     // 5. UTILITIES
     // ==========================================
     static async checkUsername(username: string) {
+        // 1. Basic sanitization & edge cases
         if (!username || username.trim() === "") {
-            return { available: false, message: "Username cannot be empty" };
+            return { available: false, message: "Username cannot be empty." };
         }
 
+        const cleanUsername = username.trim().toLowerCase();
+
+        if (cleanUsername.length < 3) {
+            return { available: false, message: "Username must be at least 3 characters long." };
+        }
+
+        // 2. Query the database
+        // We only select the 'id' field to make this query blazing fast
         const existingUser = await prisma.user.findUnique({
-            where: { username: username.trim().toLowerCase() },
-            select: { id: true } // Optimization
+            where: { username: cleanUsername },
+            select: { id: true } 
         });
 
-        return {
-            available: !existingUser,
+        // 3. Return the exact state for the frontend to render
+        if (existingUser) {
+            return { 
+                available: false, 
+                message: "Username is already taken." 
+            };
+        }
+
+        return { 
+            available: true, 
+            message: "Username is available!" 
         };
     }
 }

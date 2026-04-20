@@ -10,28 +10,33 @@ const envSchema = z.object({
     .enum(['development', 'production', 'test'])
     .default('development'),
 
-  // Database (optional for now)
+  // --- NEON DATABASE ---
   DATABASE_URL: z
     .string()
-    .url({ message: "Database URL must be a valid URL" })
-    .optional(),
+    .url({ message: "DATABASE_URL must be a valid connection string" }),
+    
+  // DIRECT_URL: z
+  //   .string()
+  //   .url({ message: "DIRECT_URL must be a valid connection string for migrations" }),
 
-  SUPABASE_URL: z
+  // --- CUSTOM AUTHENTICATION ---
+  JWT_SECRET: z
     .string()
-    .url({ message: "Must be a valid Supabase URL" }),
+    .min(16, { message: "JWT_SECRET must be at least 16 characters long for security" }),
 
-  SUPABASE_SERVICE_ROLE_KEY: z
+  // --- EXTERNAL SERVICES ---
+  RESEND_API_KEY: z
     .string()
-    .min(1, { message: "Service Role Key is required" }),
+    .min(1, { message: "Resend API key is required for auth emails" }),
+    
+  // Optional: highly recommended to keep your sender email dynamically configured
+  EMAIL_FROM: z
+    .string()
+    .default('Sats Earn <onboarding@resend.dev>'),
 
   REDIS_URL: z
     .string()
     .url({ message: "Must be a valid Redis URL" })
-    .optional(),
-
-  RESEND_API_KEY: z
-    .string()
-    .min(1, { message: "Resend API key is required" })
     .optional(),
 });
 

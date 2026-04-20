@@ -79,32 +79,36 @@ enum AnnouncementType {
 // ==========================================
 
 model User {
-  id               String   @id @default(uuid())
+id               String   @id @default(uuid())
   
-  // --- AUTHENTICATION (Includes Google OAuth Data) ---
-  supabaseAuthId   String   @unique 
+  // --- CUSTOM AUTHENTICATION ---
   email            String   @unique
-  authProvider     String   @default("EMAIL") // e.g., "GOOGLE", "EMAIL"
-  avatarUrl        String?  // Fetched from Google profile
+  passwordHash     String?  // Stores the securely hashed password
+  authProvider     String   @default("EMAIL") 
+  isVerified       Boolean  @default(false) // Blocks login until OTP is entered
   
+  // --- OTP MANAGEMENT ---
+  otpCode          String?  // Stores the 6-digit code
+  otpExpiresAt     DateTime?// Ensures the code dies after 15 minutes
+  
+  avatarUrl        String?  
   phone            String?  @unique
   role             Role     @default(USER)
   
   // --- BASIC KYC ---
-  fullName         String?  // Pre-filled from Google OAuth
+  fullName         String?  
   country          String?  
   dateOfBirth      DateTime?
-  username         String?  @unique // Made optional initially so Google Sync doesn't crash if missing
+  username         String?  @unique
 
-  // --- THE TRIPLE-BALANCE SYSTEM (Stored in Sats) ---
-  balanceAvailable Int      @default(0) // Safe to withdraw
-  balancePending   Int      @default(0) // Stuck in 24h or 15d lock
-  balanceLocked    Int      @default(0) // Welcome bonuses or special locked funds
+  // --- GAMIFICATION & ECONOMY ---
+  balanceAvailable Int      @default(0) 
+  balancePending   Int      @default(0) 
+  balanceLocked    Int      @default(0) 
 
-  // --- GAMIFICATION & DUAL-TRACK TIERS ---
-  totalXp          Int      @default(0) // The ONLY source of truth for free level/tier
-  premiumTier      PremiumTier?         // Active paid tier overlay (Null for free users)
-  premiumExpiresAt DateTime?            // When the paid buff drops off
+  totalXp          Int      @default(0) 
+  premiumTier      PremiumTier?         
+  premiumExpiresAt DateTime?            
 
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())

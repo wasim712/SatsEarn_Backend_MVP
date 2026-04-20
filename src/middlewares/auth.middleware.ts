@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { supabase } from '../external/supabase.client';
+import jwt from 'jsonwebtoken';
 import { prisma } from '../db/prisma.client';
 import { User } from '@prisma/client';
 
@@ -22,30 +22,42 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     }
 
     const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET;
 
-    // 3. Verify the token with Supabase's auth server
-    // This automatically checks if the token is expired or revoked
-    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
-
-    if (error || !supabaseUser) {
-      res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
-      return;
+    if (!secret) {
+      throw new Error("JWT_SECRET is completely missing from environment variables.");
     }
 
-    // 4. Fetch the full user profile from our PostgreSQL database
+    // 3. Verify the token using our local JWT secret
+    // This will automatically throw an error if the token is expired or tampered with
+    const decoded = jwt.verify(token, secret) as { userId: string, role: string };
+
+    // 4. Fetch the full user profile from our PostgreSQL database using the native ID
     const dbUser = await prisma.user.findUnique({
-      where: { supabaseAuthId: supabaseUser.id },
+      where: { id: decoded.userId },
     });
 
-    if (!dbUser) {
-      res.status(401).json({ error: 'Unauthorized: User not found in database' });
+    // ADD THE `!dbUser.isActive` CHECK HERE
+    if (!dbUser || !dbUser.isActive) {
+      res.status(401).json({ error: 'Unauthorized: Account deactivated or deleted.' });
       return;
     }
 
     // 5. Attach the user to the request and proceed to the controller
     req.user = dbUser;
     next();
+    
   } catch (error: any) {
+    // Provide specific error messages for the frontend to handle easily
+    if (error.name === 'TokenExpiredError') {
+      res.status(401).json({ error: 'Unauthorized: Session expired. Please log in again.' });
+      return;
+    }
+    if (error.name === 'JsonWebTokenError') {
+      res.status(401).json({ error: 'Unauthorized: Invalid token.' });
+      return;
+    }
+    
     console.error('Auth Middleware Error:', error);
     res.status(500).json({ error: 'Internal server error during authentication' });
   }

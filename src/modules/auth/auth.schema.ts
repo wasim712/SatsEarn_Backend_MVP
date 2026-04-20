@@ -16,7 +16,7 @@ export const signUpSchema = z.object({
 export const verifyOtpSchema = z.object({
   body: z.object({
     email: z.string().email(),
-    token: z.string().length(8, "OTP must be exactly 6 digits"),
+    token: z.string().length(6, "OTP must be exactly 6 digits"),
   }),
 });
 

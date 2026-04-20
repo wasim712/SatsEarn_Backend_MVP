@@ -7,6 +7,8 @@ export class AuthController {
       const result = await AuthService.signUp(req.body);
       res.status(201).json(result);
     } catch (error: any) {
+      console.log(error);
+      
       res.status(400).json({ error: error.message });
     }
   }
