@@ -28,6 +28,20 @@ static async getUserDashboard(userId: string) {
             createdAt: true,
           },
         },
+        // NEW: Dynamically count their stats based on your Prisma Schema!
+        _count: {
+          select: {
+            referrals: true, // Counts all users who used this user's referralCode
+            submissions: {
+              where: {
+                // Only count tasks that they actually completed/passed
+                status: {
+                  in: ["LOCKED_15D", "WITHDRAWABLE", "MANUAL_REVIEW"]
+                }
+              }
+            }
+          }
+        }
       },
     });
 
@@ -69,18 +83,21 @@ static async getUserDashboard(userId: string) {
         totalLifetime:
           user.balanceAvailable + user.balancePending + user.balanceLocked,
       },
+      // Now injecting the explicit DB counts into the Gamification object
       gamification: {
         totalXp: user.totalXp,
-        // Premium rule: Hide level number for premium users to elevate status
         level: isPremium ? null : level, 
         activeTier, 
-        underlyingFreeTier: freeTier, // Allows the frontend to render "Free tier: Copper" 
+        underlyingFreeTier: freeTier, 
         isPremium,
         premiumExpiresAt: user.premiumExpiresAt,
         currentStreak: user.currentStreak,
         xpDisplay,
-        // If premium or maxed out, keep the progress bar full. Otherwise, show their grind.
         progressPercent: isPremium || isMaxLevel ? 100 : currentLevelProgressPercent,
+        
+        // 🚀 NEW: Exposing the accurate counts to the frontend!
+        tasksCompleted: user._count.submissions,
+        activeReferrals: user._count.referrals,
       },
       recentActivity: user.transactions,
     };
@@ -198,20 +215,32 @@ static async deleteAccount(userId: string) {
     };
   }
   // GET ALL AVAILABLE CAMPAIGNS FOR THE USER
-  static async getAvailableCampaigns(userId: string) {
+static async getAvailableCampaigns(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { tier: true, country: true },
+      select: { totalXp: true, country: true },
     });
+    
     if (!user) throw new Error("User not found");
 
-    // Filter Logic
+    // 1. Translate raw XP into an array of allowed Campaign Tiers
+    // A Silver user should be able to see Silver, Bronze, and Basic campaigns.
+    const allowedTiers = ["BASIC"];
+    if (user.totalXp >= 1000) allowedTiers.push("BRONZE");
+    if (user.totalXp >= 5000) allowedTiers.push("SILVER");
+    if (user.totalXp >= 10000) allowedTiers.push("GOLD");
+
+    // 2. Filter Logic
     const campaigns = await prisma.campaign.findMany({
       where: {
         isActive: true,
-        // 1. User must meet the tier requirement
-        requiredTier: user.tier,
-        // 2. Must match user's country OR be a global campaign (empty array)
+        
+        // Use the new schema field 'requiredFreeTier' and the 'in' operator
+        requiredFreeTier: {
+          in: allowedTiers as any // Cast to any to avoid strict Enum type clashes if needed, or import your FreeTier enum
+        },
+        
+        // Must match user's country OR be a global campaign (empty array)
         OR: [
           { targetCountries: { has: user.country || "IN" } },
           { targetCountries: { isEmpty: true } },
@@ -252,43 +281,65 @@ static async deleteAccount(userId: string) {
     return campaign;
   }
 static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
+    // ==========================================
+    // PHASE 1: OUTSIDE THE TRANSACTION (Safe to be slow)
+    // ==========================================
+    
     const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
 
-    return await prisma.$transaction(async (tx) => {
-      // 1. Fetch User (needed for Gamification & Referral logic)
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { id: true, referredById: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true }
-      });
-      if (!user) throw new Error("User not found.");
+    // 1. Fetch User
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, referredById: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true }
+    });
+    if (!user) throw new Error("User not found.");
 
-      // 2. Fetch Task & Enforce Campaign Budgets
-      const task = await tx.task.findUnique({
-        where: { id: taskId },
-        include: { campaign: true }
-      });
-      if (!task) throw new Error("Task not found.");
-      if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
-        throw new Error("This campaign has reached its maximum budget and is closed.");
+    // 2. Fetch Task & Enforce Campaign Budgets
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: { campaign: true }
+    });
+    if (!task) throw new Error("Task not found.");
+    if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
+      throw new Error("This campaign has reached its maximum budget and is closed.");
+    }
+
+    // 3. Prevent Double Submissions
+    const existing = await prisma.submission.findUnique({
+      where: { userId_taskId: { userId, taskId } }
+    });
+    if (existing) throw new Error("You have already submitted proof for this task.");
+
+    // 4. Run AI Verifier (Takes ~8 seconds, completely safe here outside the transaction)
+    const rulesContext = task.requirements || task.description || task.campaign.description;
+    const aiResult = await AiVerificationService.analyzeProof(screenshotUrl, rulesContext);
+
+    // 5. Determine Database Status based on AI Score
+    let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
+    if (aiResult.score >= 90) determinedStatus = SubmissionStatus.LOCKED_15D; // Auto-Pass
+    else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW; // Unsure
+    else determinedStatus = SubmissionStatus.REJECTED; // Failed
+
+    // 6. Pre-Calculate Economics
+    const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
+    const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
+    
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
+
+    // ==========================================
+    // PHASE 2: INSIDE THE TRANSACTION (Lightning Fast < 50ms)
+    // ==========================================
+    
+    return await prisma.$transaction(async (tx) => {
+      // Re-verify the budget just in case it filled up while the AI was "thinking"
+      const liveCampaign = await tx.campaign.findUnique({ where: { id: task.campaign.id } });
+      if (!liveCampaign || liveCampaign.totalCompletions >= liveCampaign.maxCompletions) {
+        throw new Error("This campaign filled up while your proof was being verified.");
       }
 
-      // 3. Prevent Double Submissions
-      const existing = await tx.submission.findUnique({
-        where: { userId_taskId: { userId, taskId } }
-      });
-      if (existing) throw new Error("You have already submitted proof for this task.");
-
-      // 4. Run AI Verifier dynamically using the task requirements
-      const rulesContext = task.requirements || task.description || task.campaign.description;
-      const aiResult = await AiVerificationService.analyzeProof(screenshotUrl, rulesContext);
-
-      // 5. Determine Database Status based on AI Score
-      let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
-      if (aiResult.score >= 90) determinedStatus = SubmissionStatus.LOCKED_15D; // Auto-Pass
-      else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW; // Unsure
-      else determinedStatus = SubmissionStatus.REJECTED; // Failed
-
-      // 6. Create the Submission Record
+      // 7. Create the Submission Record
       const submission = await tx.submission.create({
         data: {
           userId,
@@ -298,26 +349,15 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
           status: determinedStatus,
           rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
           unlockAt: determinedStatus === SubmissionStatus.LOCKED_15D 
-            ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) // Lock for 15 days if auto-passed
+            ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) 
             : null
         }
       });
 
-      // 7. IF NOT REJECTED: Distribute the Sats based on the EXPLICIT PRICING MATRIX
+      // 8. IF NOT REJECTED: Distribute the Sats
       if (determinedStatus !== SubmissionStatus.REJECTED) {
         
-        // --- NEW ECONOMICS ENGINE ---
-        const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
-        const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
-        
-        // Calculate what tier the user is right now
-        const hasPremium = TierUtils.isPremiumActive(user as any); // cast safely
-        const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
-        
-        // Pull their exact explicit reward from the JSON matrix (Fallback to baseReward if undefined)
-        const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
-
-        // --- A. PAY THE WORKER (To Pending Balance) ---
+        // --- A. PAY THE WORKER ---
         await tx.user.update({
           where: { id: userId },
           data: { balancePending: { increment: workerReward } }
@@ -328,19 +368,17 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
             userId,
             amountSats: workerReward,
             type: 'TASK_REWARD',
-            description: `Task: ${task.campaign.title} (Tier: ${activeTier})`,
+            description: `Task: ${liveCampaign.title} (Tier: ${activeTier})`,
             referenceId: submission.id
           }
         });
 
-        // --- B. PAY THE REFERRER (Anti-Inflation: Based on baseReward) ---
+        // --- B. PAY THE REFERRER ---
         if (user.referredById) {
           const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
           
           if (referrer) {
             const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
-            
-            // MATH: Base Reward * Commission % (e.g., 100 Sats * 0.30 = 30 Sats)
             const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
 
             if (referralBonus > 0) {
@@ -364,7 +402,7 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
 
         // --- C. UPDATE CAMPAIGN STATS ---
         await tx.campaign.update({
-          where: { id: task.campaign.id },
+          where: { id: liveCampaign.id },
           data: { totalCompletions: { increment: 1 } }
         });
       }
@@ -372,7 +410,6 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
       return submission;
     }, { isolationLevel: 'Serializable' }); 
   }
-
   static async getReferralDashboard(userId: string) {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

@@ -2,10 +2,12 @@ import { PrismaClient } from '@prisma/client';
 import app from './app';
 import { env } from './config/env';
 import { pool, prisma } from './db/prisma.client';
+import { startCronJobs } from './modules/cron/cron.runner';
 
 const PORT = env.PORT || 8080;
 const server = app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+  startCronJobs();
 });
 console.log("🚀 Registering SIGINT handler...");
 process.stdin.resume();

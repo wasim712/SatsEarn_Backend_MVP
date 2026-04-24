@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { UserService } from './user.service';
 import { SubmissionStatus } from '@prisma/client';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 export class UserController {
   static async getDashboard(req: Request, res: Response) {
@@ -75,17 +76,21 @@ export class UserController {
 static async submitTaskProof(req: Request, res: Response) {
     try {
       const taskId = req.params.taskId as string;
-      const { screenshotUrl } = req.body;
+      const file = req.file; // This is injected by the Multer middleware
 
-      // Basic edge case validation
-      if (!screenshotUrl || !screenshotUrl.startsWith('http')) {
-        return res.status(400).json({ error: "A valid screenshotUrl is required." });
+      // 1. Basic edge case validation
+      if (!file) {
+        return res.status(400).json({ error: "A proof image file is required." });
       }
 
-      // Calls the massive transaction in the Service
+      // 2. Upload the RAM buffer directly to Cloudinary
+      // This gives us the live URL to feed to OpenAI and save to Neon
+      const screenshotUrl = await CloudinaryService.uploadImageBuffer(file.buffer);
+
+      // 3. Calls the massive transaction in the Service
       const result = await UserService.submitTask(req.user!.id, taskId, screenshotUrl);
       
-      // Provide dynamic user feedback based on the AI's decision
+      // 4. Provide dynamic user feedback based on the AI's decision
       let message = "Proof submitted successfully and is pending manual review.";
       
       if (result.status === SubmissionStatus.LOCKED_15D) {
@@ -94,7 +99,11 @@ static async submitTaskProof(req: Request, res: Response) {
         message = `AI Verification Failed: ${result.rejectionReason}`;
       }
       
-      res.status(200).json({ message, submission: result });
+      res.status(200).json({ 
+        message, 
+        submission: result,
+        proofUrl: screenshotUrl // Returning this so the frontend can display the uploaded image!
+      });
 
     } catch (error: any) {
       // Catches Prisma transaction failures, double submissions, or campaign budget caps
