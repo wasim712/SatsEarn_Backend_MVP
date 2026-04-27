@@ -42,7 +42,12 @@ enum TaskCategory {
   LEARN_EARN
   DAILY_STREAK
 }
-
+enum ProofType {
+  SCREENSHOT
+  URL
+  TEXT_RESPONSE
+  API_VERIFIED
+}
 enum SubmissionStatus {
   PENDING_24H      // AI verified, waiting for 24-hour hold
   LOCKED_15D       // Passed 24h, sitting in 15-day security lock
@@ -165,15 +170,18 @@ model Ledger {
 
 model PlatformSettings {
   id                   String   @id @default(uuid())
-  
   welcomeBonusSats     Int      @default(50)
   minWithdrawalSats    Int      @default(25000)
   securityLockDays     Int      @default(15)
-  referralBonusPercent Int      @default(5) // Default for Free users
   
+  // The old global fallback
+  referralBonusPercent Int      @default(5) 
+  
+  // 🚀 NEW: The exact % commission based on the referrer's tier
+  tierReferralMatrix   Json?    
+
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
-
   updatedAt            DateTime @updatedAt
 }
 
@@ -219,7 +227,7 @@ model Task {
   title                    String?      
   description              String?
   targetUrl                String?
-  
+  proofType                ProofType    @default(SCREENSHOT)
   // Allows a specific task in a campaign to have a different economy than the campaign default
   baseRewardSatsOverride   Int?         
   tierRewardMatrixOverride Json?        
@@ -243,20 +251,21 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   
-  // Storage & Verification
-  screenshotUrl    String            
-  imageHash        String?          // For duplicate detection
+  // 🚀 CHANGED: Made optional (Added '?') because text responses don't have images!
+  screenshotUrl    String?          
+  
+  // 🚀 NEW: Where we store the URL or Text Response from the user
+  proofText        String?          @db.Text
+  
+  imageHash        String?          
   ocrExtractedText String?          @db.Text 
   
-  // AI Decisions
   confidenceScore  Int              @default(0)
   status           SubmissionStatus @default(PENDING_24H)
   rejectionReason  String?
   
-  // Accountability
-  reviewedById     String?          // Which Admin manually approved/rejected this
+  reviewedById     String?          
 
-  // Timestamps for Cron Jobs
   submittedAt      DateTime         @default(now())
   reverifyAt       DateTime?        
   unlockAt         DateTime?        

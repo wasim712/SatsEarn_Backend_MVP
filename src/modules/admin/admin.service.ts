@@ -1,5 +1,10 @@
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
+import {
+  DEFAULT_SECURITY_LOCK_DAYS,
+  getReferralBonusAmount,
+  getSecurityUnlockAt,
+} from '../../utils/submission-flow.util';
 
 export class AdminService {
   static async getOverviewMetrics() {
@@ -189,19 +194,19 @@ static async addTaskToCampaign(campaignId: string, data: any) {
         campaignId: campaign.id,
         title: data.title,
         description: data.description,
-        targetUrl: data.targetUrl,
+        targetUrl: data.targetUrl || null,
         
-        // --- NEW ECONOMICS (Optional Overrides) ---
-        // If left null, the Submission Engine will automatically fall back 
-        // to the Campaign's baseRewardSats and tierRewardMatrix.
+        // 🚀 NEW: Explicitly save the Proof Type!
+        proofType: data.proofType || 'SCREENSHOT', 
+        
         baseRewardSatsOverride: data.baseRewardSatsOverride || null,
         tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
         
-        // --- AI VERIFIER & QUIZ RULES ---
-        // Crucial for Dynamic Context Injection! 
-        // Admin passes structured JSON like: {"mustShow": "Subscribed button"} 
-        // or {"correctAnswers": ["A", "B", "C"]}
-        requirements: data.requirements || null,
+        // 🚀 TIP: Store the requiredPlatform inside the requirements JSON!
+        requirements: {
+          ...(data.requirements || {}),
+          requiredPlatform: data.requiredPlatform || 'NONE'
+        },
       }
     });
   }
@@ -229,13 +234,38 @@ static async addTaskToCampaign(campaignId: string, data: any) {
     return task;
   }
   // UPDATE A TASK
+// UPDATE A TASK
   static async updateTask(campaignId: string, taskId: string, data: any) {
     // Verify it exists and belongs to this campaign before updating
     await this.getTaskById(campaignId, taskId);
 
+    // Destructure ONLY the fields we allow admins to change
+    const { 
+      title, 
+      description, 
+      targetUrl, 
+      proofType, 
+      requiredPlatform, // From frontend
+      baseRewardSatsOverride, 
+      tierRewardMatrixOverride 
+    } = data;
+
+    const safePayload: any = {};
+    if (title !== undefined) safePayload.title = title;
+    if (description !== undefined) safePayload.description = description;
+    if (targetUrl !== undefined) safePayload.targetUrl = targetUrl;
+    if (proofType !== undefined) safePayload.proofType = proofType;
+    if (baseRewardSatsOverride !== undefined) safePayload.baseRewardSatsOverride = baseRewardSatsOverride;
+    if (tierRewardMatrixOverride !== undefined) safePayload.tierRewardMatrixOverride = tierRewardMatrixOverride;
+    
+    // Safely update the platform inside the JSON if it was provided
+    if (requiredPlatform !== undefined) {
+      safePayload.requirements = { requiredPlatform };
+    }
+
     return await prisma.task.update({
       where: { id: taskId },
-      data
+      data: safePayload
     });
   }
 
@@ -280,7 +310,7 @@ static async addTaskToCampaign(campaignId: string, data: any) {
    * If no settings exist (first run), it creates a record with the 
    * default values defined in your Prisma schema.
    */
-  static async getGamificationSettings() {
+static async getGamificationSettings() {
     try {
       // 1. Attempt to find the first (and only) settings record
       let settings = await prisma.platformSettings.findFirst();
@@ -288,7 +318,7 @@ static async addTaskToCampaign(campaignId: string, data: any) {
       // 2. If it doesn't exist, create it immediately
       if (!settings) {
         settings = await prisma.platformSettings.create({
-          data: {} // Prisma will use the @default values from your schema.prisma
+          data: {} // Prisma uses the @default values from schema.prisma
         });
         console.log("✅ Global Platform Settings initialized with defaults.");
       }
@@ -300,14 +330,32 @@ static async addTaskToCampaign(campaignId: string, data: any) {
   }
 
   /**
-   * Updates the global settings.
+   * Safely updates the global settings while ignoring invalid frontend data.
    */
-  static async updateGamificationSettings(data: any) {
+static async updateGamificationSettings(rawData: any) {
     const settings = await this.getGamificationSettings();
+
+    // Safely extract the new matrix alongside the other numbers
+    const {
+      welcomeBonusSats, minWithdrawalSats, securityLockDays,
+      referralBonusPercent, baseXpPerTask, dailyStreakBonusXp,
+      tierReferralMatrix // ⬅️ Extract the new matrix
+    } = rawData;
+
+    const safePayload: any = {};
+    if (welcomeBonusSats !== undefined) safePayload.welcomeBonusSats = Number(welcomeBonusSats);
+    if (minWithdrawalSats !== undefined) safePayload.minWithdrawalSats = Number(minWithdrawalSats);
+    if (securityLockDays !== undefined) safePayload.securityLockDays = Number(securityLockDays);
+    if (referralBonusPercent !== undefined) safePayload.referralBonusPercent = Number(referralBonusPercent);
+    if (baseXpPerTask !== undefined) safePayload.baseXpPerTask = Number(baseXpPerTask);
+    if (dailyStreakBonusXp !== undefined) safePayload.dailyStreakBonusXp = Number(dailyStreakBonusXp);
+    
+    // ⬅️ Add the matrix to the safe payload
+    if (tierReferralMatrix !== undefined) safePayload.tierReferralMatrix = tierReferralMatrix;
 
     return await prisma.platformSettings.update({
       where: { id: settings.id },
-      data,
+      data: safePayload,
     });
   }
   // **************************************************************
@@ -319,7 +367,6 @@ static async getPendingSubmissions() {
       where: { status: 'MANUAL_REVIEW' },
       include: {
         user: { 
-          // UPDATE: Replaced `tier`
           select: { 
             email: true, 
             fullName: true, 
@@ -332,7 +379,8 @@ static async getPendingSubmissions() {
         task: { 
           select: {
             title: true,
-            rewardSatsOverride: true,
+            baseRewardSatsOverride: true, // ⬅️ FIXED: Added "base" to match schema
+            tierRewardMatrixOverride: true, // It's good to pull this too since the reviewer logic uses it!
             campaign: { 
               select: { title: true, baseRewardSats: true } 
             }
@@ -356,7 +404,10 @@ static async getPendingSubmissions() {
     });
   }
 static async reviewSubmission(submissionId: string, status: 'LOCKED_15D' | 'REJECTED', rejectionReason?: string, adminId?: string) {
-    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
+    const settings = await prisma.platformSettings.findFirst() || {
+      referralBonusPercent: 5,
+      securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
+    };
 
     return await prisma.$transaction(async (tx) => {
       // 1. Fetch submission with relationships
@@ -378,7 +429,7 @@ static async reviewSubmission(submissionId: string, status: 'LOCKED_15D' | 'REJE
           where: { id: submissionId },
           data: { 
             status: 'LOCKED_15D',
-            unlockAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // Start the 15-day timer right now
+            unlockAt: getSecurityUnlockAt(settings.securityLockDays),
             reviewedById: adminId 
           }
         });
@@ -419,7 +470,7 @@ static async reviewSubmission(submissionId: string, status: 'LOCKED_15D' | 'REJE
           
           if (referrer) {
             const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
-            const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
+            const referralBonus = getReferralBonusAmount(baseReward, commissionPercent);
             
             if (referralBonus > 0) {
               await tx.user.update({
@@ -453,18 +504,26 @@ static async reviewSubmission(submissionId: string, status: 'LOCKED_15D' | 'REJE
     }, { isolationLevel: 'Serializable' }); // Keep it serializable to prevent balance race conditions
   }
 
-  // **************************************************************
+// **************************************************************
   // --- WITHDRAWAL (PAYOUT) MANAGEMENT ---
   // **************************************************************
 
-static async getPendingWithdrawals() {
+  // 🚀 CHANGED: Renamed and removed the 'PENDING' filter so the Admin UI can see history
+  static async getAllWithdrawals() {
     const withdrawals = await prisma.withdrawal.findMany({
-      where: { status: 'PENDING' },
+      // Removed the where clause to fetch EVERYTHING
       include: {
-        // UPDATE: Replaced `tier`
-        user: { select: { email: true, fullName: true, totalXp: true, premiumTier: true, premiumExpiresAt: true } }
+        user: { 
+          select: { 
+            email: true, 
+            fullName: true, 
+            totalXp: true, 
+            premiumTier: true, 
+            premiumExpiresAt: true 
+          } 
+        }
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'desc' } // 🚀 CHANGED: 'desc' shows the newest requests at the top
     });
 
     return withdrawals.map(w => {
@@ -480,6 +539,7 @@ static async getPendingWithdrawals() {
   }
 
   static async processWithdrawal(withdrawalId: string, status: 'PAID' | 'REJECTED', paymentProof?: string) {
+    // 🚀 CHANGED: Added Serializable isolation to prevent double-refund race conditions
     return await prisma.$transaction(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId }
@@ -490,7 +550,7 @@ static async getPendingWithdrawals() {
 
       // 1. IF ADMIN PAID IT: Save the TxHash and mark as PAID
       if (status === 'PAID') {
-        if (!paymentProof) throw new Error("Payment proof (TxHash) is required when marking as PAID");
+        if (!paymentProof) throw new Error("Payment proof (TxHash/Preimage) is required when marking as PAID");
         
         return await tx.withdrawal.update({
           where: { id: withdrawalId },
@@ -506,12 +566,12 @@ static async getPendingWithdrawals() {
           data: { balanceAvailable: { increment: withdrawal.amountSats } }
         });
 
-        // Log the refund in the Ledger
+        // Log the refund in the Ledger as a positive income
         await tx.ledger.create({
           data: {
             userId: withdrawal.userId,
-            amountSats: withdrawal.amountSats,
-            type: 'WITHDRAWAL', // Reversal of withdrawal
+            amountSats: withdrawal.amountSats, // Positive amount to refund
+            type: 'WITHDRAWAL', 
             description: `Withdrawal Rejected / Refunded to Available Balance`,
             referenceId: withdrawal.id
           }
@@ -523,7 +583,7 @@ static async getPendingWithdrawals() {
           data: { status: 'REJECTED' }
         });
       }
-    });
+    }, { isolationLevel: 'Serializable' }); 
   }
 static async getAllUsers() {
     const users = await prisma.user.findMany({

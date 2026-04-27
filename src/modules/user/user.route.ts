@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { UserController } from "./user.controller";
 import {
+  requestWithdrawalSchema,
   startTaskParamSchema,
   submitDailyQuizSchema,
   submitQuizSchema,
@@ -98,5 +99,16 @@ router.post(
   '/quiz/today/submit', 
   validate(submitDailyQuizSchema), 
   UserController.submitTodayQuiz
+);
+// --- WITHDRAWALS ---
+// Get history
+router.get('/withdrawals', requireAuth, UserController.getWithdrawals);
+
+// Request new payout (Protected by Zod Schema)
+router.post(
+  '/withdrawals', 
+  requireAuth, 
+  validate(requestWithdrawalSchema), 
+  UserController.requestWithdrawal
 );
 export default router;

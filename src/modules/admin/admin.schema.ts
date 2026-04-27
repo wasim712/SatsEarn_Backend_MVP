@@ -62,55 +62,35 @@ export const updateCampaignSchema = z.object({
 
 // --- TASKS ---
 
+
+const ProofTypeEnum = z.enum(["SCREENSHOT", "URL", "TEXT_RESPONSE", "API_VERIFIED"]);
+
 export const createTaskSchema = z.object({
   body: z.object({
-    title: z.string().min(3, "Task title is required").optional(),
-    description: z.string().optional(),
-    targetUrl: z.string().url().optional(),
-    
-    // NEW ECONOMICS & AI
+    title: z.string().min(3),
+    description: z.string().min(5),
+    proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
+    targetUrl: z.string().url().optional().or(z.literal('')),
+    requiredPlatform: z.string().optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
-    tierRewardMatrixOverride: z.object({
-      BASIC: z.number().int(),
-      COPPER: z.number().int(),
-      BRONZE: z.number().int(),
-      SILVER: z.number().int(),
-      GOLD: z.number().int(),
-      PLATINUM: z.number().int(),
-      DIAMOND: z.number().int(),
-      CROWN: z.number().int(),
-      ELITE: z.number().int(),
-      FOUNDER: z.number().int(),
-    }).optional(),
-    
-    // Accepts any valid JSON object for AI grading rules or Quiz correct answers
-    requirements: z.record(z.string(),z.unknown()).optional(), 
-  }),
+    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+  })
 });
 
 export const updateTaskSchema = z.object({
   body: z.object({
-    title: z.string().min(3, "Task title must be at least 3 characters").optional(),
-    description: z.string().optional(),
-    targetUrl: z.string().url("Must be a valid URL").optional(),
+    title: z.string().min(3).optional(),
+    description: z.string().min(5).optional(),
     
+    // 🚀 NEW: Add it to the update schema too!
+    proofType: ProofTypeEnum.optional(),
+    
+    targetUrl: z.string().url().optional().or(z.literal('')),
+    requiredPlatform: z.string().optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
-    tierRewardMatrixOverride: z.object({
-      BASIC: z.number().int(),
-      COPPER: z.number().int(),
-      BRONZE: z.number().int(),
-      SILVER: z.number().int(),
-      GOLD: z.number().int(),
-      PLATINUM: z.number().int(),
-      DIAMOND: z.number().int(),
-      CROWN: z.number().int(),
-      ELITE: z.number().int(),
-      FOUNDER: z.number().int(),
-    }).optional(),
-    requirements: z.record(z.string(), z.unknown()).optional()
-  }),
+tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+  })
 });
-
 // --- ANNOUNCEMENTS ---
 export const createAnnouncementSchema = z.object({
   body: z.object({

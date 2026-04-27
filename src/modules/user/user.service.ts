@@ -5,6 +5,12 @@ import { calculateLevelAndTier } from "../../utils/gamification.util";
 import { AdminService } from "../admin/admin.service";
 import { AiVerificationService } from "../verification/verification.service";
 import { TierUtils } from "../../utils/tier.utils";
+import {
+  DEFAULT_SECURITY_LOCK_DAYS,
+  getReferralBonusAmount,
+  getReviewReleaseAt,
+  getSecurityUnlockAt,
+} from "../../utils/submission-flow.util";
 export class UserService {
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
@@ -28,13 +34,12 @@ static async getUserDashboard(userId: string) {
             createdAt: true,
           },
         },
-        // NEW: Dynamically count their stats based on your Prisma Schema!
+        // Dynamically count their stats based on your Prisma Schema!
         _count: {
           select: {
-            referrals: true, // Counts all users who used this user's referralCode
+            referrals: true, 
             submissions: {
               where: {
-                // Only count tasks that they actually completed/passed
                 status: {
                   in: ["LOCKED_15D", "WITHDRAWABLE", "MANUAL_REVIEW"]
                 }
@@ -48,7 +53,6 @@ static async getUserDashboard(userId: string) {
     if (!user) throw new Error("User not found");
 
     // --- DUAL-TRACK TIER LOGIC ---
-    // Safe cast for TierUtils if you typed it to accept the User model
     const isPremium = TierUtils.isPremiumActive(user as any); 
     const freeTier = TierUtils.getFreeTier(user.totalXp);
     const activeTier = isPremium ? user.premiumTier : freeTier;
@@ -65,14 +69,11 @@ static async getUserDashboard(userId: string) {
 
     // --- FRONTEND DISPLAY STRINGS ---
     let xpDisplay = "";
-    if (isPremium) {
-      // Premium rule: Show total XP only (no denominator)
-      xpDisplay = `${user.totalXp.toLocaleString()} XP`;
-    } else if (isMaxLevel) {
+    if (isMaxLevel) {
       xpDisplay = `${maxXp.toLocaleString()} XP (MAX)`;
     } else {
-      // Free rule: Show absolute cumulative format (13,500 / 13,999 XP)
-      xpDisplay = `${user.totalXp.toLocaleString()} / ${(nextLevelTotalXp - 1).toLocaleString()} XP`;
+      // Show absolute cumulative format for EVERYONE (e.g. 13,500 / 14,000 XP)
+      xpDisplay = `${user.totalXp.toLocaleString()} / ${nextLevelTotalXp.toLocaleString()} XP`;
     }
 
     return {
@@ -83,26 +84,23 @@ static async getUserDashboard(userId: string) {
         totalLifetime:
           user.balanceAvailable + user.balancePending + user.balanceLocked,
       },
-      // Now injecting the explicit DB counts into the Gamification object
       gamification: {
         totalXp: user.totalXp,
-        level: isPremium ? null : level, 
+        level, // ⬅️ CHANGED: Now always passes the exact level down to the frontend
         activeTier, 
         underlyingFreeTier: freeTier, 
         isPremium,
         premiumExpiresAt: user.premiumExpiresAt,
         currentStreak: user.currentStreak,
-        xpDisplay,
-        progressPercent: isPremium || isMaxLevel ? 100 : currentLevelProgressPercent,
+        xpDisplay, // ⬅️ CHANGED: Now shows the X / Y format for everyone
+        progressPercent: isMaxLevel ? 100 : currentLevelProgressPercent, // ⬅️ CHANGED: Progress bar works for Premium now
         
-        // 🚀 NEW: Exposing the accurate counts to the frontend!
         tasksCompleted: user._count.submissions,
         activeReferrals: user._count.referrals,
       },
       recentActivity: user.transactions,
     };
   }
-
   // ==========================================
   // 👤 PROFILE CRUD OPERATIONS
   // ==========================================
@@ -280,12 +278,16 @@ static async getAvailableCampaigns(userId: string) {
 
     return campaign;
   }
-static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
+// 🚀 CHANGED: Now accepts a generic proofData object instead of just a screenshot string
+  static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }) {
     // ==========================================
     // PHASE 1: OUTSIDE THE TRANSACTION (Safe to be slow)
     // ==========================================
     
-    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
+    const settings = await prisma.platformSettings.findFirst() || {
+      referralBonusPercent: 5,
+      securityLockDays: DEFAULT_SECURITY_LOCK_DAYS, // Make sure this constant is defined/imported!
+    };
 
     // 1. Fetch User
     const user = await prisma.user.findUnique({
@@ -310,15 +312,19 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
     });
     if (existing) throw new Error("You have already submitted proof for this task.");
 
-    // 4. Run AI Verifier (Takes ~8 seconds, completely safe here outside the transaction)
+    // 4. Run AI Verifier
     const rulesContext = task.requirements || task.description || task.campaign.description;
-    const aiResult = await AiVerificationService.analyzeProof(screenshotUrl, rulesContext);
+    
+    // 🚀 NEW: Determine which proof to send to the AI
+    // (Ensure your AiVerificationService is updated to handle plain text as well as image URLs!)
+    const proofContent = proofData.screenshotUrl || proofData.proofText || "";
+    const aiResult = await AiVerificationService.analyzeProof(proofContent, rulesContext);
 
     // 5. Determine Database Status based on AI Score
     let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
-    if (aiResult.score >= 90) determinedStatus = SubmissionStatus.LOCKED_15D; // Auto-Pass
-    else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW; // Unsure
-    else determinedStatus = SubmissionStatus.REJECTED; // Failed
+    if (aiResult.score >= 90) determinedStatus = SubmissionStatus.PENDING_24H;
+    else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
+    else determinedStatus = SubmissionStatus.REJECTED;
 
     // 6. Pre-Calculate Economics
     const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
@@ -344,13 +350,17 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
         data: {
           userId,
           taskId,
-          screenshotUrl,
+          // 🚀 NEW: Save whichever proof type was provided to the correct database column
+          screenshotUrl: proofData.screenshotUrl || null,
+          proofText: proofData.proofText || null,
+          
           confidenceScore: aiResult.score,
           status: determinedStatus,
           rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
-          unlockAt: determinedStatus === SubmissionStatus.LOCKED_15D 
-            ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) 
-            : null
+          unlockAt:
+            determinedStatus === SubmissionStatus.PENDING_24H
+              ? getReviewReleaseAt() // Ensure this helper is defined/imported!
+              : null,
         }
       });
 
@@ -378,8 +388,14 @@ static async submitTask(userId: string, taskId: string, screenshotUrl: string) {
           const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
           
           if (referrer) {
-            const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
-            const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
+            const commissionPercent = TierUtils.getReferralCommission(
+              referrer as any,
+              settings.referralBonusPercent,
+            );
+            const referralBonus = getReferralBonusAmount(
+              baseReward,
+              commissionPercent,
+            );
 
             if (referralBonus > 0) {
               await tx.user.update({
@@ -536,7 +552,10 @@ static async submitQuizTask(
     taskId: string,
     userAnswers: string[],
   ) {
-    const settings = await prisma.platformSettings.findFirst() || { referralBonusPercent: 5 };
+    const settings = await prisma.platformSettings.findFirst() || {
+      referralBonusPercent: 5,
+      securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
+    };
 
     return await prisma.$transaction(async (tx) => {
       
@@ -605,7 +624,7 @@ static async submitQuizTask(
           screenshotUrl: "QUIZ_PASSED", // No screenshot needed
           confidenceScore: 100,
           status: SubmissionStatus.LOCKED_15D, 
-          unlockAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+          unlockAt: getSecurityUnlockAt(settings.securityLockDays),
         },
       });
 
@@ -630,8 +649,14 @@ static async submitQuizTask(
         const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
         
         if (referrer) {
-          const commissionPercent = TierUtils.getReferralCommission(referrer as any, settings.referralBonusPercent);
-          const referralBonus = Math.floor(baseReward * (commissionPercent / 100));
+          const commissionPercent = TierUtils.getReferralCommission(
+            referrer as any,
+            settings.referralBonusPercent,
+          );
+          const referralBonus = getReferralBonusAmount(
+            baseReward,
+            commissionPercent,
+          );
 
           if (referralBonus > 0) {
             await tx.user.update({
@@ -701,7 +726,7 @@ static async submitQuizTask(
       const alreadyClaimed = await tx.ledger.findFirst({
         where: {
           userId,
-          type: "WELCOME_BONUS", // Or create a 'STREAK_BONUS' type in your Prisma Enum
+          type: "STREAK_BONUS",
           description: { contains: `${user.currentStreak}-Day Streak` },
         },
       });
@@ -723,7 +748,7 @@ static async submitQuizTask(
         data: {
           userId,
           amountSats: rewardSats,
-          type: "WELCOME_BONUS", // Treat it like a bonus
+          type: "STREAK_BONUS",
           description: `${user.currentStreak}-Day Streak Milestone Reached!`,
         },
       });
@@ -919,5 +944,71 @@ static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: st
         rewardEarned: finalRewardSats
       };
     });
+  }
+  // **************************************************************
+  // --- USER WITHDRAWALS ---
+  // **************************************************************
+
+  // GET: Fetch user's personal withdrawal history
+  static async getUserWithdrawals(userId: string) {
+    return await prisma.withdrawal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  // POST: Request a new withdrawal
+  static async requestWithdrawal(userId: string, amountSats: number, lightningInvoice: string) {
+    // 1. Fetch platform settings for the minimum withdrawal limit
+    const settings = await prisma.platformSettings.findFirst();
+    const minWithdrawal = settings?.minWithdrawalSats || 25000;
+
+    if (amountSats < minWithdrawal) {
+      throw new Error(`The minimum withdrawal amount is ${minWithdrawal.toLocaleString()} Sats.`);
+    }
+
+    // 2. Perform the secure withdrawal transaction
+    return await prisma.$transaction(async (tx) => {
+      // A. Fetch the user to check their current balance
+      const user = await tx.user.findUnique({ 
+        where: { id: userId },
+        select: { balanceAvailable: true }
+      });
+
+      if (!user) throw new Error("User not found.");
+      
+      if (user.balanceAvailable < amountSats) {
+        throw new Error("Insufficient available balance.");
+      }
+
+      // B. Instantly deduct the requested amount from their available balance
+      await tx.user.update({
+        where: { id: userId },
+        data: { balanceAvailable: { decrement: amountSats } }
+      });
+
+      // C. Create the pending withdrawal record
+      const withdrawal = await tx.withdrawal.create({
+        data: {
+          userId,
+          amountSats,
+          lightningInvoice,
+          status: 'PENDING'
+        }
+      });
+
+      // D. Log the debit in the Ledger (Negative amount!)
+      await tx.ledger.create({
+        data: {
+          userId,
+          amountSats: -amountSats, // Note the minus sign
+          type: 'WITHDRAWAL',
+          description: 'Withdrawal requested (Pending Admin Review)',
+          referenceId: withdrawal.id
+        }
+      });
+
+      return withdrawal;
+    }, { isolationLevel: 'Serializable' }); // Strict isolation prevents double-spending!
   }
 }

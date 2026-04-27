@@ -142,9 +142,9 @@ router.get('/submissions/pending',  AdminController.getPendingSubmissions);
 router.post('/submissions/:id/review',  AdminController.reviewSubmission);
 
 // --- WITHDRAWALS ---
-router.get('/withdrawals/pending',  AdminController.getPendingWithdrawals);
-router.post('/withdrawals/:id/process',  AdminController.processWithdrawal);
-
+router.get('/withdrawals',  AdminController.getWithdrawals);
+router.post('/withdrawals/:id/approve',  AdminController.approveWithdrawal);
+router.post('/withdrawals/:id/reject',  AdminController.rejectWithdrawal);
 // --- SETTINGS ---
 router.get('/settings',  AdminController.getPlatformSettings);
 router.put('/settings',  AdminController.updatePlatformSettings);

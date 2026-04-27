@@ -41,3 +41,15 @@ export const submitDailyQuizSchema = z.object({
     ).min(1, "You must submit at least one answer"),
   }),
 });
+export const requestWithdrawalSchema = z.object({
+  body: z.object({
+    amountSats: z.number()
+      .int("Amount must be a whole number")
+      .positive("Amount must be greater than 0"),
+    lightningInvoice: z.string()
+      .min(10, "Invoice is too short")
+      .refine(val => val.toLowerCase().startsWith('lnbc') || val.toLowerCase().startsWith('lntb'), {
+        message: "Invoice must be a valid Lightning Network invoice starting with 'lnbc' or 'lntb'."
+      })
+  })
+});

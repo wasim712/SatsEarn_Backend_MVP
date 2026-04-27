@@ -76,33 +76,45 @@ export class UserController {
 static async submitTaskProof(req: Request, res: Response) {
     try {
       const taskId = req.params.taskId as string;
-      const file = req.file; // This is injected by the Multer middleware
+      
+      // Grab whichever data the frontend sent
+      const file = req.file; // Injected by Multer if it's an image
+      const proofText = req.body.proofText; // Injected by express.json() if it's a URL/Text
+      const isApiVerification = req.body.triggerVerification;
 
       // 1. Basic edge case validation
-      if (!file) {
-        return res.status(400).json({ error: "A proof image file is required." });
+      if (!file && !proofText && !isApiVerification) {
+        return res.status(400).json({ error: "Proof is required. Please upload an image, enter text/URL, or trigger verification." });
       }
 
-      // 2. Upload the RAM buffer directly to Cloudinary
-      // This gives us the live URL to feed to OpenAI and save to Neon
-      const screenshotUrl = await CloudinaryService.uploadImageBuffer(file.buffer);
+      let screenshotUrl: string | undefined = undefined;
 
-      // 3. Calls the massive transaction in the Service
-      const result = await UserService.submitTask(req.user!.id, taskId, screenshotUrl);
+      // 2. Upload to Cloudinary ONLY if an image was provided
+      if (file) {
+        screenshotUrl = await CloudinaryService.uploadImageBuffer(file.buffer);
+      }
+
+      // 3. Call the massive transaction in the Service using the new object signature
+      const result = await UserService.submitTask(req.user!.id, taskId, {
+        screenshotUrl,
+        proofText
+      });
       
       // 4. Provide dynamic user feedback based on the AI's decision
       let message = "Proof submitted successfully and is pending manual review.";
       
-      if (result.status === SubmissionStatus.LOCKED_15D) {
+      // Note: Adjusted to check for PENDING_24H or LOCKED_15D based on your service logic
+      if (result.status === 'PENDING_24H' || result.status === 'LOCKED_15D') {
         message = "AI Verified! Your proof was auto-approved and funds have been added to your pending balance.";
-      } else if (result.status === SubmissionStatus.REJECTED) {
+      } else if (result.status === 'REJECTED') {
         message = `AI Verification Failed: ${result.rejectionReason}`;
       }
       
       res.status(200).json({ 
         message, 
         submission: result,
-        proofUrl: screenshotUrl // Returning this so the frontend can display the uploaded image!
+        // Return whichever proof type they used so the frontend can display it
+        proofProvided: screenshotUrl || proofText || "API Verified" 
       });
 
     } catch (error: any) {
@@ -180,6 +192,33 @@ static async submitTaskProof(req: Request, res: Response) {
       const { answers } = req.body;
       const result = await UserService.submitDailyQuiz(req.user!.id, answers);
       res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+  // GET /api/users/withdrawals
+  static async getWithdrawals(req: Request, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const withdrawals = await UserService.getUserWithdrawals(userId);
+      res.status(200).json(withdrawals);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  // POST /api/users/withdrawals
+  static async requestWithdrawal(req: Request, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const { amountSats, lightningInvoice } = req.body;
+
+      const withdrawal = await UserService.requestWithdrawal(userId, amountSats, lightningInvoice);
+      
+      res.status(201).json({
+        message: "Withdrawal requested successfully.",
+        withdrawal
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

@@ -228,31 +228,35 @@ static async reviewSubmission(req: Request, res: Response) {
   // --- WITHDRAWAL CONTROLLERS ---
   // **************************************************************
 
-  static async getPendingWithdrawals(req: Request, res: Response) {
-    try {
-      const withdrawals = await AdminService.getPendingWithdrawals();
-      res.status(200).json(withdrawals);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
+// GET /api/admin/withdrawals
+static async getWithdrawals(req: Request, res: Response) {
+  try {
+    const data = await AdminService.getAllWithdrawals();
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
-static async processWithdrawal(req: Request, res: Response) {
-    try {
-      // 1. Explicitly cast the ID as a single string
-      const id = req.params.id as string;
-      
-      // 2. Explicitly cast the status to match the exact Enum
-      const status = req.body.status as 'PAID' | 'REJECTED';
-      
-      // 3. Cast the payment proof as a string or undefined
-      const paymentProof = req.body.paymentProof as string | undefined;
+}
 
-      const result = await AdminService.processWithdrawal(id, status, paymentProof);
-      res.status(200).json({ message: `Withdrawal marked as ${status}`, result });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
+// POST /api/admin/withdrawals/:id/approve
+static async approveWithdrawal(req: Request, res: Response) {
+  try {
+    const data = await AdminService.processWithdrawal(req.params.id as string, 'PAID', req.body.paymentProof);
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
+}
+
+// POST /api/admin/withdrawals/:id/reject
+static async rejectWithdrawal(req: Request, res: Response) {
+  try {
+    const data = await AdminService.processWithdrawal(req.params.id as string, 'REJECTED');
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+}
   // **************************************************************
   // --- SETTINGS CONTROLLERS ---
   // **************************************************************

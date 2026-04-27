@@ -18,7 +18,23 @@ app.use(helmet());
 // 2. Rate Limiting (Global)
 
 app.use('/api/', limiter);
-app.use(cors());
+const allowedOrigins = [
+  process.env.CLIENT_URL,        // production
+  'http://localhost:3000',       // local dev
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(routeLogger); 
 

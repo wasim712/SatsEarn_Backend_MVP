@@ -1,7 +1,47 @@
 import { SubmissionStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.client'; // Adjust path if needed
+import {
+  DEFAULT_SECURITY_LOCK_DAYS,
+  getSecurityUnlockAt,
+} from '../../utils/submission-flow.util';
 
 export class CronService {
+  static async process24HourReviewQueue() {
+    const settings = await prisma.platformSettings.findFirst() || {
+      securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
+    };
+
+    const readySubmissions = await prisma.submission.findMany({
+      where: {
+        status: SubmissionStatus.PENDING_24H,
+        unlockAt: { lte: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (readySubmissions.length === 0) {
+      return { message: 'No submissions are ready for 15-day locking.' };
+    }
+
+    const lockAt = getSecurityUnlockAt(settings.securityLockDays);
+
+    const result = await prisma.submission.updateMany({
+      where: {
+        id: { in: readySubmissions.map((submission) => submission.id) },
+        status: SubmissionStatus.PENDING_24H,
+      },
+      data: {
+        status: SubmissionStatus.LOCKED_15D,
+        unlockAt: lockAt,
+      },
+    });
+
+    return {
+      success: true,
+      message: `Moved ${result.count} submissions into 15-day lock.`,
+    };
+  }
+
   /**
    * Finds all submissions where the 15-day timer has expired
    * and safely moves the user's funds from Pending to Available.
