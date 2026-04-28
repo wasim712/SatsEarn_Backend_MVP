@@ -10,6 +10,7 @@ import {
 import multer from 'multer';
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { ZodObject } from "zod";
+import { NotificationController } from "../notifications/notification.controller";
 
 const router = Router();
 const upload = multer({ 
@@ -111,4 +112,7 @@ router.post(
   validate(requestWithdrawalSchema), 
   UserController.requestWithdrawal
 );
+router.get('/notifications', requireAuth, NotificationController.getMyNotifications);
+router.put('/notifications/read-all', requireAuth, NotificationController.markAllMyRead);
+router.put('/notifications/:id/read', requireAuth, NotificationController.markRead);
 export default router;

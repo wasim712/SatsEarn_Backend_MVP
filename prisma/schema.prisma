@@ -79,6 +79,20 @@ enum AnnouncementType {
   PROMOTION
 }
 
+enum NotificationType {
+  // User Notifications
+  SUBMISSION_APPROVED
+  SUBMISSION_REJECTED
+  WITHDRAWAL_PAID
+  WITHDRAWAL_REJECTED
+  SYSTEM_ALERT
+
+  // Admin Notifications
+  NEW_SUBMISSION
+  NEW_WITHDRAWAL
+}
+
+
 // ==========================================
 // MODELS: The Data Architecture
 // ==========================================
@@ -135,6 +149,7 @@ id               String   @id @default(uuid())
   withdrawals      Withdrawal[]
   transactions     Ledger[]     
   quizAttempts     QuizAttempt[]
+  notifications    Notification[]
   
   isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
@@ -367,4 +382,24 @@ model QuizAttempt {
 
   // Critical: Prevents a user from submitting the same daily quiz twice
   @@unique([userId, dailyQuizId]) 
+}
+model Notification {
+  id          String           @id @default(uuid())
+  
+  // Who gets it? 
+  userId      String?          // If null and forAdmin is true, ALL admins see it
+  user        User?            @relation(fields: [userId], references: [id])
+  forAdmin    Boolean          @default(false)
+
+  title       String
+  message     String           @db.Text
+  type        NotificationType
+  
+  isRead      Boolean          @default(false)
+  referenceId String?          // Helpful to link directly to a task or withdrawal ID
+
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([forAdmin, isRead])
 }

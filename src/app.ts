@@ -8,7 +8,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './modules/auth/auth.route';
 import userRoutes from './modules/user/user.route'; 
 import adminRoutes from './modules/admin/admin.route';
-
+import publicRoutes from './modules/public/public.route'
 import { routeLogger } from './middlewares/logger.middleware';
 import { limiter } from './middlewares/rate-limit';
 
@@ -42,7 +42,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use('/api/users', userRoutes);
-
+app.use('/api/public',publicRoutes)
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'SatsEarn API is running' });
 });

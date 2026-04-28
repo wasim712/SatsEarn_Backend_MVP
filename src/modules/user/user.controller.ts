@@ -223,4 +223,13 @@ static async submitTaskProof(req: Request, res: Response) {
       res.status(400).json({ error: error.message });
     }
   }
+  // Add this to your controller handling public routes
+static async activeAnnouncement(req:Request,res:Response){
+  try{
+    const announcement = await UserService.getActiveAnnouncements()
+    res.status(200).json(announcement)
+  }catch (error:any){
+      res.status(400).json({ error: error.message });
+  }
+}
 }

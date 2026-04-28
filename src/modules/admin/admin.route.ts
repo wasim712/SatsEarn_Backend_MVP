@@ -14,6 +14,7 @@ import {
     updateTaskSchema,
 } from "./admin.schema";
 import { ZodObject } from "zod";
+import { NotificationController } from "../notifications/notification.controller";
 
 const router = Router();
 
@@ -166,4 +167,7 @@ router.patch('/quiz/daily/:id', validate(updateDailyQuizSchema), AdminController
 
 // Delete
 router.delete('/quiz/daily/:id', validate(quizIdParamSchema), AdminController.deleteDailyQuiz);
+router.get('/notifications', NotificationController.getAdminAlerts);
+router.put('/notifications/read-all', NotificationController.markAllAdminRead);
+router.put('/notifications/:id/read', NotificationController.markRead);
 export default router;
