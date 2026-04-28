@@ -199,20 +199,27 @@ export class AdminController {
     }
   }
 
-  static async reviewSubmission(req: Request, res: Response) {
+static async reviewSubmission(req: Request, res: Response) {
     try {
       // 1. Explicitly cast the ID as a single string
       const id = req.params.id as string;
       
-      // 2. Explicitly cast the status to match the exact Enum required by the service
-      const status = req.body.status as 'PENDING_24H' | 'REJECTED';
+      // 2. UPDATED: Cast the status to match the exact Enum required by the new service logic
+      const status = req.body.status as 'LOCKED_15D' | 'REJECTED';
+      
+      // Safety Check: Prevent the backend from crashing if the frontend sends a bad status
+      if (status !== 'LOCKED_15D' && status !== 'REJECTED') {
+        return res.status(400).json({ 
+          error: "Invalid status. Manual review only accepts 'LOCKED_15D' (Approve) or 'REJECTED'." 
+        });
+      }
       
       // 3. Cast optional fields
       const rejectionReason = req.body.rejectionReason as string | undefined;
       const adminId = req.user?.id as string | undefined; 
 
       const result = await AdminService.reviewSubmission(id, status, rejectionReason, adminId);
-      res.status(200).json({ message: `Submission marked as ${status}`, result });
+      res.status(200).json({ message: `Submission successfully marked as ${status}`, result });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -221,31 +228,35 @@ export class AdminController {
   // --- WITHDRAWAL CONTROLLERS ---
   // **************************************************************
 
-  static async getPendingWithdrawals(req: Request, res: Response) {
-    try {
-      const withdrawals = await AdminService.getPendingWithdrawals();
-      res.status(200).json(withdrawals);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
+// GET /api/admin/withdrawals
+static async getWithdrawals(req: Request, res: Response) {
+  try {
+    const data = await AdminService.getAllWithdrawals();
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
-static async processWithdrawal(req: Request, res: Response) {
-    try {
-      // 1. Explicitly cast the ID as a single string
-      const id = req.params.id as string;
-      
-      // 2. Explicitly cast the status to match the exact Enum
-      const status = req.body.status as 'PAID' | 'REJECTED';
-      
-      // 3. Cast the payment proof as a string or undefined
-      const paymentProof = req.body.paymentProof as string | undefined;
+}
 
-      const result = await AdminService.processWithdrawal(id, status, paymentProof);
-      res.status(200).json({ message: `Withdrawal marked as ${status}`, result });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
+// POST /api/admin/withdrawals/:id/approve
+static async approveWithdrawal(req: Request, res: Response) {
+  try {
+    const data = await AdminService.processWithdrawal(req.params.id as string, 'PAID', req.body.paymentProof);
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
+}
+
+// POST /api/admin/withdrawals/:id/reject
+static async rejectWithdrawal(req: Request, res: Response) {
+  try {
+    const data = await AdminService.processWithdrawal(req.params.id as string, 'REJECTED');
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+}
   // **************************************************************
   // --- SETTINGS CONTROLLERS ---
   // **************************************************************

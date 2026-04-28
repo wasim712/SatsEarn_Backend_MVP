@@ -1,11 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
-import { createClient } from "@supabase/supabase-js";
+import bcrypt from "bcryptjs"; // Replaces Supabase Auth
 import "dotenv/config";
 
+// TIP: For Prisma migrations/seeding with Neon, it is safer to use the DIRECT_URL
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL,
     connectionTimeoutMillis: 30000,
     idleTimeoutMillis: 30000,
     max: 1,
@@ -13,12 +14,6 @@ const pool = new Pool({
 });
 const adapter = new PrismaPg(pool as any);
 const prisma = new PrismaClient({ adapter });
-
-const supabaseAdmin = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-);
 
 async function main() {
     console.log("🌱 Starting Full System Seed...");
@@ -35,60 +30,45 @@ async function main() {
         },
     });
     console.log("✅ Platform settings initialized.");
-const adminEmail = "admin@satsearn.com";
-const adminPassword = process.env.ADMIN_PASSWORD!;
 
-const { data: authData, error: authError } =
-  await supabaseAdmin.auth.admin.createUser({
-    email: adminEmail,
-    password: adminPassword,
-    email_confirm: true,
-    user_metadata: {
-      fullName: "Saksham Arya",
-      country: "IN",
-      username: "admin",
-    },
-  });
+    // --- 2. ADMIN SEED ---
+    const adminEmail = "admin@satsearn.com";
+    const adminPassword = process.env.ADMIN_PASSWORD;
 
-let supabaseId: string;
+    if (!adminPassword) {
+        throw new Error("❌ ADMIN_PASSWORD environment variable is missing!");
+    }
 
-if (authError) {
-  if (authError.message.includes("already registered")) {
-    const { data: list } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 100,
+    console.log("🔐 Hashing admin password...");
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+
+    // Upsert the Admin User directly into Prisma
+    await prisma.user.upsert({
+        where: { email: adminEmail },
+        update: { 
+            role: "SUPER_ADMIN",
+            passwordHash // Ensures password updates if you change ADMIN_PASSWORD in .env
+        },
+        create: {
+            email: adminEmail,
+            passwordHash,
+            authProvider: "EMAIL",
+            isVerified: true, // Skip OTP verification for the admin
+            fullName: "Saksham Arya",
+            username: "admin",
+            role: "SUPER_ADMIN",
+            referralCode: "ADMIN001",
+            country: "IN",
+            
+            // --- UPDATED ECONOMY FIELDS ---
+            totalXp: 10000, 
+            // 'tier' and 'supabaseAuthId' have been completely removed!
+        },
     });
 
-    const existing = list.users.find((u) => u.email === adminEmail);
-    if (!existing) throw new Error("Admin exists but not found");
-
-    supabaseId = existing.id;
-  } else {
-    throw authError;
-  }
-} else {
-  supabaseId = authData.user!.id;
-}
-
-await prisma.user.upsert({
-  where: { supabaseAuthId: supabaseId },
-  update: { role: "SUPER_ADMIN" },
-  create: {
-    supabaseAuthId: supabaseId,
-    email: adminEmail,
-    fullName: "Saksham Arya",
-    username: "admin",
-    role: "SUPER_ADMIN",
-    referralCode: "ADMIN001",
-    country: "IN",
-    xp: 10000,
-    tier: "GOLD",
-  },
-});
     console.log(`👑 SUCCESS: Admin account created!`);
     console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log(`⚠️  Delete the password from seed.ts after running!`);
+    console.log(`⚠️  Keep your ADMIN_PASSWORD secure in your .env file!`);
 }
 
 main()

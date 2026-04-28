@@ -14,6 +14,7 @@ import {
     updateTaskSchema,
 } from "./admin.schema";
 import { ZodObject } from "zod";
+import { NotificationController } from "../notifications/notification.controller";
 
 const router = Router();
 
@@ -142,9 +143,9 @@ router.get('/submissions/pending',  AdminController.getPendingSubmissions);
 router.post('/submissions/:id/review',  AdminController.reviewSubmission);
 
 // --- WITHDRAWALS ---
-router.get('/withdrawals/pending',  AdminController.getPendingWithdrawals);
-router.post('/withdrawals/:id/process',  AdminController.processWithdrawal);
-
+router.get('/withdrawals',  AdminController.getWithdrawals);
+router.post('/withdrawals/:id/approve',  AdminController.approveWithdrawal);
+router.post('/withdrawals/:id/reject',  AdminController.rejectWithdrawal);
 // --- SETTINGS ---
 router.get('/settings',  AdminController.getPlatformSettings);
 router.put('/settings',  AdminController.updatePlatformSettings);
@@ -166,4 +167,7 @@ router.patch('/quiz/daily/:id', validate(updateDailyQuizSchema), AdminController
 
 // Delete
 router.delete('/quiz/daily/:id', validate(quizIdParamSchema), AdminController.deleteDailyQuiz);
+router.get('/notifications', NotificationController.getAdminAlerts);
+router.put('/notifications/read-all', NotificationController.markAllAdminRead);
+router.put('/notifications/:id/read', NotificationController.markRead);
 export default router;

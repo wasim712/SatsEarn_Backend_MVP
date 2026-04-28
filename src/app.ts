@@ -8,7 +8,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './modules/auth/auth.route';
 import userRoutes from './modules/user/user.route'; 
 import adminRoutes from './modules/admin/admin.route';
-
+import publicRoutes from './modules/public/public.route'
 import { routeLogger } from './middlewares/logger.middleware';
 import { limiter } from './middlewares/rate-limit';
 
@@ -18,7 +18,23 @@ app.use(helmet());
 // 2. Rate Limiting (Global)
 
 app.use('/api/', limiter);
-app.use(cors());
+const allowedOrigins = [
+  process.env.CLIENT_URL,        // production
+  'http://localhost:3000',       // local dev
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(routeLogger); 
 
@@ -26,7 +42,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use('/api/users', userRoutes);
-
+app.use('/api/public',publicRoutes)
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'SatsEarn API is running' });
 });

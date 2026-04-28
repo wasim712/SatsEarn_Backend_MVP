@@ -15,11 +15,22 @@ enum Role {
   SUPER_ADMIN
 }
 
-enum Tier {
+// Free tiers are earned strictly via totalXp grinding
+enum FreeTier {
   BASIC
+  COPPER
   BRONZE
   SILVER
   GOLD
+}
+
+// Premium tiers are bought and sit "on top" of free tiers
+enum PremiumTier {
+  PLATINUM
+  DIAMOND
+  CROWN
+  ELITE
+  FOUNDER
 }
 
 enum TaskCategory {
@@ -31,7 +42,12 @@ enum TaskCategory {
   LEARN_EARN
   DAILY_STREAK
 }
-
+enum ProofType {
+  SCREENSHOT
+  URL
+  TEXT_RESPONSE
+  API_VERIFIED
+}
 enum SubmissionStatus {
   PENDING_24H      // AI verified, waiting for 24-hour hold
   LOCKED_15D       // Passed 24h, sitting in 15-day security lock
@@ -63,50 +79,78 @@ enum AnnouncementType {
   PROMOTION
 }
 
+enum NotificationType {
+  // User Notifications
+  SUBMISSION_APPROVED
+  SUBMISSION_REJECTED
+  WITHDRAWAL_PAID
+  WITHDRAWAL_REJECTED
+  SYSTEM_ALERT
+
+  // Admin Notifications
+  NEW_SUBMISSION
+  NEW_WITHDRAWAL
+}
+
+
 // ==========================================
 // MODELS: The Data Architecture
 // ==========================================
 
 model User {
-  id               String   @id @default(uuid())
-  supabaseAuthId   String   @unique 
+id               String   @id @default(uuid())
+  
+  // --- CUSTOM AUTHENTICATION ---
   email            String   @unique
+  passwordHash     String?  // Stores the securely hashed password
+  authProvider     String   @default("EMAIL") 
+  isVerified       Boolean  @default(false) // Blocks login until OTP is entered
+  
+  // --- OTP MANAGEMENT ---
+  otpCode          String?  // Stores the 6-digit code
+  otpExpiresAt     DateTime?// Ensures the code dies after 15 minutes
+  
+  avatarUrl        String?  
   phone            String?  @unique
   role             Role     @default(USER)
   
-  // Basic KYC
-  fullName         String?
+  // --- BASIC KYC ---
+  fullName         String?  
   country          String?  
   dateOfBirth      DateTime?
-  username         String   @unique
-  // THE TRIPLE-BALANCE SYSTEM (Stored in Sats)
-  balanceAvailable Int      @default(0) // Safe to withdraw
-  balancePending   Int      @default(0) // Stuck in 24h or 15d lock
-  balanceLocked    Int      @default(0) // Welcome bonuses or special locked funds
+  username         String?  @unique
 
-  // Gamification & Stats
-  tier             Tier     @default(BASIC)
-  xp               Int      @default(0)
-  level            Int      @default(0)
+  // --- GAMIFICATION & ECONOMY ---
+  balanceAvailable Int      @default(0) 
+  balancePending   Int      @default(0) 
+  balanceLocked    Int      @default(0) 
+
+  totalXp          Int      @default(0) 
+  premiumTier      PremiumTier?         
+  premiumExpiresAt DateTime?            
+
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())
-  quizAttempts      QuizAttempt[]
-  // Connected Social Accounts
+  
+  // --- CONNECTED SOCIAL ACCOUNTS ---
   twitterHandle    String?
   instagramHandle  String?
   telegramHandle   String?
   discordHandle    String?
 
-  // Referral System
+  // --- REFERRAL SYSTEM ---
   referralCode     String   @unique
   referredById     String?
   referredBy       User?    @relation("UserReferrals", fields: [referredById], references: [id])
   referrals        User[]   @relation("UserReferrals")
 
-  // Relations
+  // --- RELATIONS ---
   submissions      Submission[]
   withdrawals      Withdrawal[]
   transactions     Ledger[]     
+  quizAttempts     QuizAttempt[]
+  notifications    Notification[]
+  
   isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -141,15 +185,18 @@ model Ledger {
 
 model PlatformSettings {
   id                   String   @id @default(uuid())
-  
   welcomeBonusSats     Int      @default(50)
   minWithdrawalSats    Int      @default(25000)
   securityLockDays     Int      @default(15)
+  
+  // The old global fallback
   referralBonusPercent Int      @default(5) 
   
+  // 🚀 NEW: The exact % commission based on the referrer's tier
+  tierReferralMatrix   Json?    
+
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
-
   updatedAt            DateTime @updatedAt
 }
 
@@ -166,9 +213,15 @@ model Campaign {
   targetUrl          String?
   socialHandleTarget String?      
   targetCountries    String[]     
-  requiredTier       Tier         @default(BASIC)
   
-  rewardSats         Int
+  // --- THE ACCESS GATES ---
+  requiredFreeTier   FreeTier     @default(BASIC) // E.g., "Must be at least Silver"
+  isPremiumOnly      Boolean      @default(false) // E.g., "Must hold ANY paid subscription"
+  
+  // --- THE ECONOMICS (Explicit Pricing Matrix) ---
+  baseRewardSats     Int          // The anchor for calculating referral commissions
+  tierRewardMatrix   Json         // Stores exact Sats for all 10 tiers e.g. {"BASIC": 10, ..., "FOUNDER": 50}
+  
   totalCompletions   Int          @default(0)
   maxCompletions     Int          
   
@@ -178,25 +231,28 @@ model Campaign {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
-  @@index([isActive, requiredTier]) 
+  @@index([isActive, isPremiumOnly, requiredFreeTier]) 
 }
 
 model Task {
-  id                 String       @id @default(uuid())
-  campaignId         String
-  campaign           Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id                       String       @id @default(uuid())
+  campaignId               String
+  campaign                 Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   
-  title              String?      
-  description        String?
-  targetUrl          String?
-  rewardSatsOverride Int?         
+  title                    String?      
+  description              String?
+  targetUrl                String?
+  proofType                ProofType    @default(SCREENSHOT)
+  // Allows a specific task in a campaign to have a different economy than the campaign default
+  baseRewardSatsOverride   Int?         
+  tierRewardMatrixOverride Json?        
   
-  // Flexible rules (e.g., {"minFollowers": 100})
-  requirements       Json?        
+  // Flexible rules (e.g., {"minFollowers": 100}) for the AI Prompt
+  requirements             Json?        
 
-  submissions        Submission[]
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  submissions              Submission[]
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
 }
 
 // ------------------------------------------
@@ -210,20 +266,21 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   
-  // Storage & Verification
-  screenshotUrl    String           
-  imageHash        String?          // For duplicate detection
+  // 🚀 CHANGED: Made optional (Added '?') because text responses don't have images!
+  screenshotUrl    String?          
+  
+  // 🚀 NEW: Where we store the URL or Text Response from the user
+  proofText        String?          @db.Text
+  
+  imageHash        String?          
   ocrExtractedText String?          @db.Text 
   
-  // AI Decisions
   confidenceScore  Int              @default(0)
   status           SubmissionStatus @default(PENDING_24H)
   rejectionReason  String?
   
-  // Accountability
-  reviewedById     String?          // Which Admin manually approved/rejected this
+  reviewedById     String?          
 
-  // Timestamps for Cron Jobs
   submittedAt      DateTime         @default(now())
   reverifyAt       DateTime?        
   unlockAt         DateTime?        
@@ -268,25 +325,26 @@ model Announcement {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 }
+
 // ==========================================
 // DAILY QUIZ GAMIFICATION ENGINE
 // ==========================================
 
 model DailyQuiz {
-  id          String   @id @default(uuid())
+  id         String   @id @default(uuid())
   
   // The specific calendar day for this quiz (Ensures only 1 quiz per day)
-  date        DateTime @unique @db.Date 
+  date       DateTime @unique @db.Date 
   
-  title       String   // e.g., "Bitcoin Basics: The Halving"
-  rewardSats  Int      @default(10) // Small dopamine hit
-  isActive    Boolean  @default(true)
+  title      String   // e.g., "Bitcoin Basics: The Halving"
+  rewardSats Int      @default(10) // Small dopamine hit
+  isActive   Boolean  @default(true)
 
-  questions   QuizQuestion[]
-  attempts    QuizAttempt[]
+  questions  QuizQuestion[]
+  attempts   QuizAttempt[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model QuizQuestion {
@@ -309,19 +367,39 @@ model QuizQuestion {
 
 // Tracks who took the quiz so they can't double-dip
 model QuizAttempt {
-  id            String   @id @default(uuid())
+  id          String   @id @default(uuid())
   
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   
-  dailyQuizId   String
-  dailyQuiz     DailyQuiz @relation(fields: [dailyQuizId], references: [id])
+  dailyQuizId String
+  dailyQuiz   DailyQuiz @relation(fields: [dailyQuizId], references: [id])
   
-  score         Int
-  passed        Boolean  // True if they got 100%
+  score       Int
+  passed      Boolean  // True if they got 100%
 
-  createdAt     DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   // Critical: Prevents a user from submitting the same daily quiz twice
   @@unique([userId, dailyQuizId]) 
+}
+model Notification {
+  id          String           @id @default(uuid())
+  
+  // Who gets it? 
+  userId      String?          // If null and forAdmin is true, ALL admins see it
+  user        User?            @relation(fields: [userId], references: [id])
+  forAdmin    Boolean          @default(false)
+
+  title       String
+  message     String           @db.Text
+  type        NotificationType
+  
+  isRead      Boolean          @default(false)
+  referenceId String?          // Helpful to link directly to a task or withdrawal ID
+
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([forAdmin, isRead])
 }

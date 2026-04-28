@@ -1,61 +1,97 @@
+import { FreeTier, TaskCategory } from '@prisma/client';
 import { z } from 'zod';
 
-// Matching the enums from your Prisma Schema
-const TaskCategoryEnum = z.enum(['SOCIAL', 'SURVEY', 'VIDEO_AD', 'APP_INSTALL', 'OFFERWALL', 'LEARN_EARN', 'DAILY_STREAK']);
-const TierEnum = z.enum(['BASIC', 'BRONZE', 'SILVER', 'GOLD']);
+// --- CAMPAIGNS ---
 
 export const createCampaignSchema = z.object({
   body: z.object({
-    title: z.string().min(5, "Title must be at least 5 characters"),
-    description: z.string().min(10, "Description must be at least 10 characters"),
-    category: TaskCategoryEnum,
+    title: z.string(),
+    description: z.string(),
+    category: z.nativeEnum(TaskCategory),
+    isPremiumOnly: z.boolean().default(false),
+    requiredFreeTier: z.nativeEnum(FreeTier).default('BASIC'),
     
-    // Optional targeting fields depending on the task
-    targetUrl: z.string().url().optional(),
-    socialHandleTarget: z.string().optional(),
+    baseRewardSats: z.number().int().positive(),
+
+    tierRewardMatrix: z.object({
+      BASIC: z.number().int(),
+      COPPER: z.number().int(),
+      BRONZE: z.number().int(),
+      SILVER: z.number().int(),
+      GOLD: z.number().int(),
+      PLATINUM: z.number().int(),
+      DIAMOND: z.number().int(),
+      CROWN: z.number().int(),
+      ELITE: z.number().int(),
+      FOUNDER: z.number().int(),
+    }),
     
-    // Economics
-    rewardSats: z.number().int().positive("Reward must be a positive integer"),
-    maxCompletions: z.number().int().positive("Max completions must be a positive integer"),
-    
-    // Restrictions
-    targetCountries: z.array(z.string()).default([]), // Empty array means global
-    requiredTier: TierEnum.default('BASIC'),
-  }),
+    maxCompletions: z.number().int().positive()
+  })
 });
-// Add this below your createCampaignSchema
+
 export const updateCampaignSchema = z.object({
   body: z.object({
     title: z.string().min(5, "Title must be at least 5 characters").optional(),
     description: z.string().min(10, "Description must be at least 10 characters").optional(),
-    category: z.enum(['SOCIAL', 'SURVEY', 'VIDEO_AD', 'APP_INSTALL', 'OFFERWALL', 'LEARN_EARN', 'DAILY_STREAK']).optional(),
+    category: z.nativeEnum(TaskCategory).optional(),
     targetUrl: z.string().url().optional(),
     socialHandleTarget: z.string().optional(),
-    rewardSats: z.number().int().positive().optional(),
     maxCompletions: z.number().int().positive().optional(),
     targetCountries: z.array(z.string()).optional(),
-    requiredTier: z.enum(['BASIC', 'BRONZE', 'SILVER', 'GOLD']).optional(),
-    isActive: z.boolean().optional(), // Allows admin to pause the campaign
+    isActive: z.boolean().optional(),
+    
+    // NEW ECONOMICS
+    isPremiumOnly: z.boolean().optional(),
+    requiredFreeTier: z.nativeEnum(FreeTier).optional(),
+    baseRewardSats: z.number().int().positive().optional(),
+    tierRewardMatrix: z.object({
+      BASIC: z.number().int(),
+      COPPER: z.number().int(),
+      BRONZE: z.number().int(),
+      SILVER: z.number().int(),
+      GOLD: z.number().int(),
+      PLATINUM: z.number().int(),
+      DIAMOND: z.number().int(),
+      CROWN: z.number().int(),
+      ELITE: z.number().int(),
+      FOUNDER: z.number().int(),
+    }).optional(),
   }),
 });
+
+// --- TASKS ---
+
+
+const ProofTypeEnum = z.enum(["SCREENSHOT", "URL", "TEXT_RESPONSE", "API_VERIFIED"]);
+
 export const createTaskSchema = z.object({
   body: z.object({
-    title: z.string().min(3, "Task title is required").optional(),
-    description: z.string().optional(),
-    targetUrl: z.string().url().optional(),
-    rewardSatsOverride: z.number().int().positive().optional(), // In case one task pays more than others in the same campaign
-  }),
+    title: z.string().min(3),
+    description: z.string().min(5),
+    proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
+    targetUrl: z.string().url().optional().or(z.literal('')),
+    requiredPlatform: z.string().optional(),
+    baseRewardSatsOverride: z.number().int().positive().optional(),
+    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+  })
 });
-// Add this below createTaskSchema
+
 export const updateTaskSchema = z.object({
   body: z.object({
-    title: z.string().min(3, "Task title must be at least 3 characters").optional(),
-    description: z.string().optional(),
-    targetUrl: z.string().url("Must be a valid URL").optional(),
-    rewardSatsOverride: z.number().int().positive().optional(),
-  }),
+    title: z.string().min(3).optional(),
+    description: z.string().min(5).optional(),
+    
+    // 🚀 NEW: Add it to the update schema too!
+    proofType: ProofTypeEnum.optional(),
+    
+    targetUrl: z.string().url().optional().or(z.literal('')),
+    requiredPlatform: z.string().optional(),
+    baseRewardSatsOverride: z.number().int().positive().optional(),
+tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+  })
 });
-// Announcements
+// --- ANNOUNCEMENTS ---
 export const createAnnouncementSchema = z.object({
   body: z.object({
     title: z.string().min(3, "Title is too short"),
@@ -74,6 +110,7 @@ export const updateAnnouncementSchema = z.object({
   }),
 });
 
+// --- DAILY QUIZ ---
 const quizQuestionSchema = z.object({
   questionText: z.string().min(5, "Question must be at least 5 characters"),
   options: z.array(z.string()).min(2, "Must provide at least 2 options").max(5, "Max 5 options allowed"),
@@ -81,7 +118,7 @@ const quizQuestionSchema = z.object({
   order: z.number().int().min(1)
 }).refine((data) => data.options.includes(data.correctAnswer), {
   message: "The correctAnswer MUST be one of the provided options",
-  path: ["correctAnswer"] // Points the error exactly to the wrong field
+  path: ["correctAnswer"]
 });
 
 export const createDailyQuizSchema = z.object({
@@ -94,14 +131,13 @@ export const createDailyQuizSchema = z.object({
     questions: z.array(quizQuestionSchema).min(1, "A quiz must have at least 1 question")
   })
 });
-// Validates the UUID in the URL for GetOne, Update, and Delete
+
 export const quizIdParamSchema = z.object({
   params: z.object({
     id: z.string().uuid("Invalid Quiz ID format"),
   }),
 });
 
-// Validates the body for the Update route
 export const updateDailyQuizSchema = z.object({
   params: z.object({
     id: z.string().uuid("Invalid Quiz ID format"),

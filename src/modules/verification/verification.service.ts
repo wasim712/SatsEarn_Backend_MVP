@@ -1,17 +1,18 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 import axios from "axios";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || "",
+});
 
 export class AiVerificationService {
   static async analyzeProof(screenshotUrl: string, taskRules: any): Promise<{ score: number; reason: string }> {
     try {
-      // 1. Fetch the image from Supabase Storage and convert to Base64
       const imageResponse = await axios.get(screenshotUrl, { responseType: "arraybuffer" });
       const base64Image = Buffer.from(imageResponse.data, "binary").toString("base64");
       const mimeType = imageResponse.headers["content-type"] || "image/jpeg";
 
-      // 2. Construct the dynamic context (The "Mad Libs" prompt)
+      // 2. Construct the dynamic context
       const dynamicRules = typeof taskRules === 'string' ? taskRules : JSON.stringify(taskRules, null, 2);
       
       const prompt = `
@@ -21,25 +22,38 @@ export class AiVerificationService {
         REQUIREMENTS:
         ${dynamicRules}
 
-        Analyze the image and return ONLY a valid JSON object. Do not use markdown blocks like \`\`\`json.
+        Analyze the image and return ONLY a valid JSON object.
         {
           "score": <Integer from 0 to 100 representing confidence of completion>,
           "reason": "<One short sentence explaining the score>"
         }
       `;
 
-      // 3. Call Gemini 1.5 Flash (Optimized for fast multimodal tasks)
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash",
-        generationConfig: { responseMimeType: "application/json" } // Forces pure JSON output
+      // 3. Call OpenAI (gpt-4o-mini is ultra-fast and cheap for vision tasks)
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // Change to "gpt-4o" if you need higher reasoning for complex images
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "image_url",
+                image_url: {
+                  // OpenAI requires the specific data URI syntax for base64 images
+                  url: `data:${mimeType};base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        // 4. Force pure JSON output (Requires the prompt to explicitly ask for JSON, which ours does)
+        response_format: { type: "json_object" }, 
       });
 
-      const result = await model.generateContent([
-        { inlineData: { data: base64Image, mimeType } },
-        prompt
-      ]);
+      const resultText = response.choices[0].message.content;
+      if (!resultText) throw new Error("OpenAI returned an empty response.");
 
-      const resultText = result.response.text();
       const parsed = JSON.parse(resultText);
 
       return {
@@ -49,8 +63,7 @@ export class AiVerificationService {
 
     } catch (error: any) {
       console.error("AI Verification Failed:", error.message);
-      // EDGE CASE: If Gemini fails, rate limits, or the image URL is dead, DO NOT reject the user.
-      // Push it to manual review with a score of 75.
+      // EDGE CASE: If OpenAI rate limits or the image fetch fails, default to manual review.
       return { score: 75, reason: "AI verification failed. Flagged for manual review." };
     }
   }
