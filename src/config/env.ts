@@ -24,6 +24,11 @@ const envSchema = z.object({
     .string()
     .min(16, { message: "JWT_SECRET must be at least 16 characters long for security" }),
 
+  FIELD_ENCRYPTION_KEY: z
+    .string()
+    .min(16, { message: "FIELD_ENCRYPTION_KEY must be at least 16 characters long for security" })
+    .optional(),
+
   // --- EXTERNAL SERVICES ---
   RESEND_API_KEY: z
     .string()

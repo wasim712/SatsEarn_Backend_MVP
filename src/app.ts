@@ -1,26 +1,24 @@
-import express from 'express';
 import cors from 'cors';
-
-// Security
-import helmet from 'helmet'
-import rateLimit from 'express-rate-limit';
-// Routes
-import authRoutes from './modules/auth/auth.route';
-import userRoutes from './modules/user/user.route'; 
-import adminRoutes from './modules/admin/admin.route';
-import publicRoutes from './modules/public/public.route'
+import express from 'express';
+import helmet from 'helmet';
+import { errorHandler } from './middlewares/error.middleware';
 import { routeLogger } from './middlewares/logger.middleware';
 import { limiter } from './middlewares/rate-limit';
+import adminRoutes from './modules/admin/admin.route';
+import authRoutes from './modules/auth/auth.route';
+import fraudRoutes from './modules/fraud/fraud.route';
+import publicRoutes from './modules/public/public.route';
+import userRoutes from './modules/user/user.route';
 
 const app = express();
+
 app.use(helmet());
-
-// 2. Rate Limiting (Global)
-
+app.set('trust proxy', true);
 app.use('/api/', limiter);
+
 const allowedOrigins = [
-  process.env.CLIENT_URL,        // production
-  'http://localhost:3000',       // local dev
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
 ];
 
 app.use(
@@ -28,31 +26,28 @@ app.use(
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return;
       }
+
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-  })
+  }),
 );
+
 app.use(express.json());
-app.use(routeLogger); 
+app.use(routeLogger);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
-
 app.use('/api/users', userRoutes);
-app.use('/api/public',publicRoutes)
-app.get('/health', (req, res) => {
+app.use('/api/public', publicRoutes);
+app.use('/api/security', fraudRoutes);
+
+app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'OK', message: 'SatsEarn API is running' });
 });
 
-// Global Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("Critical Error:", err.stack);
-  res.status(500).json({ 
-    error: "Something went wrong internally.",
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined 
-  });
-});
+app.use(errorHandler);
+
 export default app;

@@ -1,10 +1,9 @@
-import { uuid } from 'zod';
 import { prisma } from '../../db/prisma.client';
 import { AdminService } from '../admin/admin.service'; 
 import { EmailService } from './email.service'; 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-// import { v4 as uuidv4 } from 'uuid';
+import { CryptoUtil } from '../../utils/crypto.util';
 
 export interface SignUpInput {
     email: string;
@@ -14,6 +13,7 @@ export interface SignUpInput {
     dateOfBirth: string | Date;
     referralCode?: string;
     username: string;
+    clientIp?: string; // 🚀 NEW: Accept IP from the controller
 }
 
 export class AuthService {
@@ -33,10 +33,13 @@ export class AuthService {
     // ==========================================
     // 1. SIGN UP (Generate User & OTP)
     // ==========================================
-static async signUp(data: SignUpInput) {
+    static async signUp(data: SignUpInput) {
         const email = data.email.trim().toLowerCase();
         const username = data.username.trim().toLowerCase();
         const referralCode = data.referralCode?.trim().toUpperCase();
+        
+        // 🚀 FIXED: Use the IP passed from the controller, fallback to UNKNOWN
+        const clientIp = data.clientIp || 'UNKNOWN';
 
         // 1. Check existing users
         const existingUser = await prisma.user.findFirst({
@@ -59,10 +62,11 @@ static async signUp(data: SignUpInput) {
                 await prisma.user.update({
                     where: { id: existingUser.id },
                     data: {
-                        passwordHash: newPasswordHash, // Update in case they changed their mind on the password
-                        fullName: data.fullName,       // Update in case they fixed a typo
-                        otpCode: newOtpCode,
-                        otpExpiresAt: newOtpExpiresAt
+                        passwordHash: newPasswordHash,
+                        fullName: data.fullName,       
+                        otpCode: CryptoUtil.encrypt(newOtpCode),
+                        otpExpiresAt: newOtpExpiresAt,
+                        lastIpAddress: CryptoUtil.encrypt(clientIp) // 🚀 Update IP just in case
                     }
                 });
 
@@ -108,8 +112,10 @@ static async signUp(data: SignUpInput) {
                 referralCode: uuidv4().substring(0, 8).toUpperCase(),
                 referredById,
                 isVerified: false, 
-                otpCode,
-                otpExpiresAt
+                otpCode: CryptoUtil.encrypt(otpCode),
+                otpExpiresAt,
+                registrationIp: CryptoUtil.encrypt(clientIp), // 🚀 NEW: Save registration IP
+                lastIpAddress: CryptoUtil.encrypt(clientIp)   // 🚀 NEW: Save last IP
             }
         });
 
@@ -118,6 +124,7 @@ static async signUp(data: SignUpInput) {
 
         return { message: "Account created! Please check your email for the verification code." };
     }
+
     // ==========================================
     // 2. VERIFY OTP (Activate & Login)
     // ==========================================
@@ -129,7 +136,7 @@ static async signUp(data: SignUpInput) {
         if (user.isVerified) throw new Error("Account is already verified. Please log in.");
 
         // 1. Validate OTP
-        if (user.otpCode !== token) throw new Error("Invalid verification code.");
+        if (CryptoUtil.decrypt(user.otpCode) !== token) throw new Error("Invalid verification code.");
         if (!user.otpExpiresAt || user.otpExpiresAt < new Date()) {
             throw new Error("Verification code expired. Please request a new one.");
         }
@@ -142,7 +149,7 @@ static async signUp(data: SignUpInput) {
             where: { id: user.id },
             data: {
                 isVerified: true,
-                otpCode: null, // Clear the OTP security fields
+                otpCode: null, 
                 otpExpiresAt: null,
                 balanceLocked: settings.welcomeBonusSats
             }
@@ -161,7 +168,8 @@ static async signUp(data: SignUpInput) {
     // ==========================================
     // 3. SIGN IN
     // ==========================================
-    static async signIn(email: string, password: string) {
+    // 🚀 FIXED: Accept clientIp to track VPN/Location changes on login
+    static async signIn(email: string, password: string, clientIp: string = 'UNKNOWN') {
         const user = await prisma.user.findUnique({
             where: { email: email.trim().toLowerCase() }
         });
@@ -177,13 +185,19 @@ static async signUp(data: SignUpInput) {
         const isValidPassword = await bcrypt.compare(password, user.passwordHash);
         if (!isValidPassword) throw new Error("Invalid email or password.");
 
+        // 🚀 NEW: Update their last known IP address so the Fraud Engine is accurate
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: { lastIpAddress: CryptoUtil.encrypt(clientIp) }
+        });
+
         const sessionToken = this.generateToken(user.id, user.role);
 
-        return { session: sessionToken, user };
+        return { session: sessionToken, user: updatedUser };
     }
 
     // ==========================================
-    // 4. RESEND OTP (The UX Fix)
+    // 4. RESEND OTP
     // ==========================================
     static async resendSignupOtp(email: string) {
         const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
@@ -196,7 +210,7 @@ static async signUp(data: SignUpInput) {
 
         await prisma.user.update({
             where: { id: user.id },
-            data: { otpCode, otpExpiresAt }
+            data: { otpCode: CryptoUtil.encrypt(otpCode), otpExpiresAt }
         });
 
         await EmailService.sendVerificationEmail(user.email, otpCode);
@@ -210,7 +224,6 @@ static async signUp(data: SignUpInput) {
     static async requestPasswordReset(email: string) {
         const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
         
-        // Security check: Don't leak whether the email exists
         if (!user) return { message: "If an account exists, a password reset code has been sent." };
 
         const otpCode = this.generateOTP();
@@ -218,10 +231,9 @@ static async signUp(data: SignUpInput) {
 
         await prisma.user.update({
             where: { id: user.id },
-            data: { otpCode, otpExpiresAt }
+            data: { otpCode: CryptoUtil.encrypt(otpCode), otpExpiresAt }
         });
 
-        // Add a method in your EmailService specifically for password reset templates
         await EmailService.sendPasswordResetEmail(user.email, otpCode);
 
         return { message: "If an account exists, a password reset code has been sent." };
@@ -229,9 +241,9 @@ static async signUp(data: SignUpInput) {
 
     static async resetPassword(email: string, token: string, newPassword: string) {
         const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-        if (!user) throw new Error("Invalid request."); // Generic error for security
+        if (!user) throw new Error("Invalid request."); 
 
-        if (user.otpCode !== token || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+        if (CryptoUtil.decrypt(user.otpCode) !== token || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
             throw new Error("Invalid or expired reset code.");
         }
 
@@ -248,11 +260,11 @@ static async signUp(data: SignUpInput) {
 
         return { message: "Password updated successfully. Please log in." };
     }
+
     // ==========================================
-    // 5. UTILITIES
+    // 6. UTILITIES
     // ==========================================
     static async checkUsername(username: string) {
-        // 1. Basic sanitization & edge cases
         if (!username || username.trim() === "") {
             return { available: false, message: "Username cannot be empty." };
         }
@@ -263,24 +275,15 @@ static async signUp(data: SignUpInput) {
             return { available: false, message: "Username must be at least 3 characters long." };
         }
 
-        // 2. Query the database
-        // We only select the 'id' field to make this query blazing fast
         const existingUser = await prisma.user.findUnique({
             where: { username: cleanUsername },
             select: { id: true } 
         });
 
-        // 3. Return the exact state for the frontend to render
         if (existingUser) {
-            return { 
-                available: false, 
-                message: "Username is already taken." 
-            };
+            return { available: false, message: "Username is already taken." };
         }
 
-        return { 
-            available: true, 
-            message: "Username is available!" 
-        };
+        return { available: true, message: "Username is available!" };
     }
 }

@@ -131,7 +131,8 @@ id               String   @id @default(uuid())
 
   currentStreak    Int      @default(0)
   lastActivityAt   DateTime @default(now())
-  
+  registrationIp   String?  // The IP they used to create the account
+  lastIpAddress    String?  // The IP they last logged in with
   // --- CONNECTED SOCIAL ACCOUNTS ---
   twitterHandle    String?
   instagramHandle  String?
@@ -265,7 +266,7 @@ model Submission {
   user             User             @relation(fields: [userId], references: [id])
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
-  
+  ipAddress        String?
   // 🚀 CHANGED: Made optional (Added '?') because text responses don't have images!
   screenshotUrl    String?          
   
