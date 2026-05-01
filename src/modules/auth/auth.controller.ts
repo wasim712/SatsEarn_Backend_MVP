@@ -2,16 +2,22 @@ import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 
 export class AuthController {
-  static async signUp(req: Request, res: Response) {
-    try {
-      const result = await AuthService.signUp(req.body);
-      res.status(201).json(result);
-    } catch (error: any) {
-      console.log(error);
-      
-      res.status(400).json({ error: error.message });
-    }
+ static async signup (req: Request, res: Response) {
+  try {
+    // 1. Safely extract IP from Express
+    const clientIp = req.ip || req.headers['x-forwarded-for']?.toString() || 'UNKNOWN';
+
+    // 2. Pass it into the service
+    const result = await AuthService.signUp({
+      ...req.body,
+      clientIp // <-- Handing it off!
+    });
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
+};
 
   static async verifyOtp(req: Request, res: Response) {
     try {
@@ -23,15 +29,19 @@ export class AuthController {
     }
   }
 
-  static async signIn(req: Request, res: Response) {
-    try {
-      const { email, password } = req.body;
-      const result = await AuthService.signIn(email, password);
-      res.status(200).json(result);
-    } catch (error: any) {
-      res.status(401).json({ error: error.message });
-    }
+  static async signin  (req: Request, res: Response) {
+  try {
+    const { email, password } = req.body;
+    const clientIp = req.ip || req.headers['x-forwarded-for']?.toString() || 'UNKNOWN';
+
+    // Pass the IP as the third argument
+    const result = await AuthService.signIn(email, password, clientIp);
+
+    res.status(200).json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
+};
 
   // Add these inside your AuthController class
 
