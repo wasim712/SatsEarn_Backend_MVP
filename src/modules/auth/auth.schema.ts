@@ -5,6 +5,10 @@ export const signUpSchema = z.object({
     email: z.string().email("Invalid email address"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     fullName: z.string().min(2, "Full name is required"),
+    username: z
+      .string()
+      .min(3, "Username must be at least 3 characters")
+      .max(10, "Username cannot be greater than 10 characters"),
     country: z.string().min(2, "Country is required"),
     dateOfBirth: z.string().refine((date) => !isNaN(Date.parse(date)), {
       message: "Invalid date format (use YYYY-MM-DD)",

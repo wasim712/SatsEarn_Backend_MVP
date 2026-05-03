@@ -14,7 +14,6 @@ const app = express();
 
 app.use(helmet());
 app.set('trust proxy', true);
-app.use('/api/', limiter);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
@@ -37,6 +36,9 @@ app.use(
 
 app.use(express.json());
 app.use(routeLogger);
+
+app.use('/api/auth', limiter);
+app.use('/api/security', limiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
