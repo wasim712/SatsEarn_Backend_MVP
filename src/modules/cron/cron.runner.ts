@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { CronService } from './cron.service';
 
 export const startCronJobs = () => {
-  const scheduleTime = '* * * * *';
+  const scheduleTime = '*/2 * * * *';
 
   console.log(`Background worker initialized. Jobs scheduled for [${scheduleTime}]`);
 
