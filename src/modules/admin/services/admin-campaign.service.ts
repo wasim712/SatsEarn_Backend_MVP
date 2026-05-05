@@ -12,19 +12,11 @@ export class AdminCampaignService {
         socialHandleTarget: data.socialHandleTarget,
         maxCompletions: data.maxCompletions,
         targetCountries: data.targetCountries || [],
+        requiredPlatform: data.requiredPlatform || 'NONE',
         isPremiumOnly: data.isPremiumOnly || false,
         requiredFreeTier: data.requiredFreeTier || 'BASIC',
         baseRewardSats: data.baseRewardSats,
         tierRewardMatrix: data.tierRewardMatrix,
-        tasks: {
-          create: [
-            {
-              title: `Complete: ${data.title}`,
-              description: data.description,
-              targetUrl: data.targetUrl,
-            },
-          ],
-        },
       },
       include: {
         tasks: true,

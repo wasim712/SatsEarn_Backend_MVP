@@ -1,4 +1,4 @@
-import { FreeTier, TaskCategory } from '@prisma/client';
+import { CampaignDevice, FreeTier, TaskCategory } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -8,8 +8,10 @@ export const createCampaignSchema = z.object({
     title: z.string(),
     description: z.string(),
     category: z.nativeEnum(TaskCategory),
+    targetCountries: z.array(z.string()).optional(),
     isPremiumOnly: z.boolean().default(false),
     requiredFreeTier: z.nativeEnum(FreeTier).default('BASIC'),
+    requiredPlatform: z.nativeEnum(CampaignDevice).default('NONE'),
     
     baseRewardSats: z.number().int().positive(),
 
@@ -40,6 +42,7 @@ export const updateCampaignSchema = z.object({
     maxCompletions: z.number().int().positive().optional(),
     targetCountries: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
+    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     
     // NEW ECONOMICS
     isPremiumOnly: z.boolean().optional(),
