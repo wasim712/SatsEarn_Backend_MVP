@@ -16,6 +16,28 @@ export class UserService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
+        submissions: {
+          orderBy: { submittedAt: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            status: true,
+            rejectionReason: true,
+            submittedAt: true,
+            unlockAt: true,
+            userId: true,
+            task: {
+              select: {
+                title: true,
+                campaign: {
+                  select: {
+                    title: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         transactions: {
           orderBy: { createdAt: 'desc' },
           take: 5,
@@ -79,6 +101,31 @@ export class UserService {
         activeReferrals: user._count.referrals,
       },
       recentActivity: user.transactions,
+      recentSubmissions: await Promise.all(
+        user.submissions.map(async (submission) => {
+          const ledgerEntry = await prisma.ledger.findFirst({
+            where: {
+              referenceId: submission.id,
+              userId: submission.userId,
+              type: 'TASK_REWARD',
+            },
+            select: { amountSats: true },
+          });
+
+          return {
+            id: submission.id,
+            taskTitle: submission.task.title,
+            campaignTitle: submission.task.campaign.title,
+            status: submission.status,
+            rejectionReason: submission.rejectionReason,
+            submittedAt: submission.submittedAt,
+            unlockAt: submission.unlockAt,
+            creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
+            rewardSats: ledgerEntry?.amountSats || 0,
+            remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
+          };
+        }),
+      ),
     };
   }
 
@@ -116,6 +163,46 @@ export class UserService {
 
   static async getUnlockSchedule(userId: string) {
     return await UserReferralService.getUnlockSchedule(userId);
+  }
+
+  static async getSubmissionHistory(userId: string) {
+    const submissions = await prisma.submission.findMany({
+      where: { userId },
+      include: {
+        task: {
+          include: {
+            campaign: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    return await Promise.all(
+      submissions.map(async (submission) => {
+        const ledgerEntry = await prisma.ledger.findFirst({
+          where: {
+            referenceId: submission.id,
+            userId,
+            type: 'TASK_REWARD',
+          },
+          select: { amountSats: true },
+        });
+
+        return {
+          id: submission.id,
+          taskTitle: submission.task.title,
+          campaignTitle: submission.task.campaign.title,
+          status: submission.status,
+          rejectionReason: submission.rejectionReason,
+          submittedAt: submission.submittedAt,
+          unlockAt: submission.unlockAt,
+          creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
+          rewardSats: ledgerEntry?.amountSats || 0,
+          remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
+        };
+      }),
+    );
   }
 
   static async submitQuizTask(userId: string, taskId: string, answers: string[]) {

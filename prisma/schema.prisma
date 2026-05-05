@@ -42,6 +42,12 @@ enum TaskCategory {
   LEARN_EARN
   DAILY_STREAK
 }
+enum CampaignDevice {
+  NONE
+  DESKTOP
+  ANDROID
+  IOS
+}
 enum ProofType {
   SCREENSHOT
   URL
@@ -214,6 +220,7 @@ model Campaign {
   targetUrl          String?
   socialHandleTarget String?      
   targetCountries    String[]     
+  requiredPlatform   CampaignDevice @default(NONE)
   
   // --- THE ACCESS GATES ---
   requiredFreeTier   FreeTier     @default(BASIC) // E.g., "Must be at least Silver"

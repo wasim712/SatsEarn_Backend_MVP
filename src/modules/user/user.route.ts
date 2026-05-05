@@ -34,6 +34,7 @@ router.post('/tasks/:taskId/start', UserController.startTask);
 
 router.get('/referrals', UserController.getReferralDashboard);
 router.get('/unlocks', UserController.getUnlockSchedule);
+router.get('/submissions', UserController.getSubmissionHistory);
 
 router.post('/streak/claim', UserController.claimStreak);
 router.get('/quiz/today', UserController.getTodayQuiz);
