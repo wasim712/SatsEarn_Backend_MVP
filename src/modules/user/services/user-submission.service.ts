@@ -65,7 +65,7 @@ export class UserSubmissionService {
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
 
-    return await prisma.$transaction(
+    const submission = await prisma.$transaction(
       async (tx) => {
         const liveCampaign = await tx.campaign.findUnique({ where: { id: task.campaign.id } });
         if (!liveCampaign || liveCampaign.totalCompletions >= liveCampaign.maxCompletions) {
@@ -137,16 +137,36 @@ export class UserSubmissionService {
           });
         }
 
-        await NotificationService.notifyAdmins(
-          'New Task Submission',
-          `${user.fullName} just submitted proof for a task.`,
-          'NEW_SUBMISSION',
-          submission.id,
-        );
-
         return submission;
       },
       { isolationLevel: 'Serializable' },
     );
+
+    if (submission) {
+      try {
+        if (submission.status === SubmissionStatus.REJECTED) {
+          await NotificationService.notifyUser(
+            userId,
+            'Submission Rejected',
+            submission.rejectionReason || 'Your submission did not meet task requirements.',
+            'SUBMISSION_REJECTED',
+            submission.id,
+          );
+        }
+
+        if (submission.status === SubmissionStatus.MANUAL_REVIEW) {
+          await NotificationService.notifyAdmins(
+            'Manual Review Required',
+            `${user.fullName} submitted a task that needs manual review.`,
+            'NEW_SUBMISSION',
+            submission.id,
+          );
+        }
+      } catch (notifyError) {
+        console.error('Submission saved, but admin notification failed:', notifyError);
+      }
+    }
+
+    return submission;
   }
 }

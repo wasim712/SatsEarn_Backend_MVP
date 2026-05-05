@@ -48,6 +48,10 @@ export const userTaskHandlers = {
     try { res.json(await UserService.getUnlockSchedule(req.user!.id)); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
   },
+  async getSubmissionHistory(req: Request, res: Response) {
+    try { res.json(await UserService.getSubmissionHistory(req.user!.id)); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
   async submitQuiz(req: Request, res: Response) {
     try { res.status(200).json(await UserService.submitQuizTask(req.user!.id, req.params.taskId as string, req.body.answers)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }

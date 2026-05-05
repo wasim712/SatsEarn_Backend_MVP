@@ -13,6 +13,7 @@ export class UserController {
   static async deleteAccount(req: Request, res: Response) { return userAccountHandlers.deleteAccount(req, res); }
   static async getReferralDashboard(req: Request, res: Response) { return userTaskHandlers.getReferralDashboard(req, res); }
   static async getUnlockSchedule(req: Request, res: Response) { return userTaskHandlers.getUnlockSchedule(req, res); }
+  static async getSubmissionHistory(req: Request, res: Response) { return userTaskHandlers.getSubmissionHistory(req, res); }
   static async submitQuiz(req: Request, res: Response) { return userTaskHandlers.submitQuiz(req, res); }
   static async claimStreak(req: Request, res: Response) { return userTaskHandlers.claimStreak(req, res); }
   static async startTask(req: Request, res: Response) { return userTaskHandlers.startTask(req, res); }
