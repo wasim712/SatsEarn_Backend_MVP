@@ -5,6 +5,7 @@ export class AdminQuizService {
     date: string;
     title: string;
     rewardSats: number;
+    xpReward: number;
     questions: Array<{
       questionText: string;
       options: string[];
@@ -24,6 +25,7 @@ export class AdminQuizService {
         date: targetDate,
         title: data.title,
         rewardSats: data.rewardSats,
+        xpReward: data.xpReward || 0,
         questions: {
           create: data.questions.map((question) => ({
             questionText: question.questionText,
@@ -62,7 +64,7 @@ export class AdminQuizService {
 
   static async updateDailyQuiz(
     id: string,
-    data: { title?: string; rewardSats?: number; isActive?: boolean },
+    data: { title?: string; rewardSats?: number; xpReward?: number; isActive?: boolean },
   ) {
     await this.getDailyQuizById(id);
     return await prisma.dailyQuiz.update({ where: { id }, data });

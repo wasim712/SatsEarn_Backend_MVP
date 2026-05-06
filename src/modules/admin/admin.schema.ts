@@ -14,6 +14,9 @@ export const createCampaignSchema = z.object({
     requiredPlatform: z.nativeEnum(CampaignDevice).default('NONE'),
     
     baseRewardSats: z.number().int().positive(),
+    xpReward: z.number().int().min(0).default(0),
+    doubleRewardsStartAt: z.string().datetime().optional(),
+    doubleRewardsEndAt: z.string().datetime().optional(),
 
     tierRewardMatrix: z.object({
       BASIC: z.number().int(),
@@ -48,6 +51,9 @@ export const updateCampaignSchema = z.object({
     isPremiumOnly: z.boolean().optional(),
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     baseRewardSats: z.number().int().positive().optional(),
+    xpReward: z.number().int().min(0).optional(),
+    doubleRewardsStartAt: z.string().datetime().optional().nullable(),
+    doubleRewardsEndAt: z.string().datetime().optional().nullable(),
     tierRewardMatrix: z.object({
       BASIC: z.number().int(),
       COPPER: z.number().int(),
@@ -76,6 +82,7 @@ export const createTaskSchema = z.object({
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
+    xpRewardOverride: z.number().int().min(0).optional(),
     tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
@@ -87,10 +94,11 @@ export const updateTaskSchema = z.object({
     
     // 🚀 NEW: Add it to the update schema too!
     proofType: ProofTypeEnum.optional(),
-    
+
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
+    xpRewardOverride: z.number().int().min(0).optional(),
 tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
@@ -131,6 +139,7 @@ export const createDailyQuizSchema = z.object({
     }),
     title: z.string().min(3),
     rewardSats: z.number().int().positive().default(10),
+    xpReward: z.number().int().min(0).default(0),
     questions: z.array(quizQuestionSchema).min(1, "A quiz must have at least 1 question")
   })
 });
@@ -148,6 +157,7 @@ export const updateDailyQuizSchema = z.object({
   body: z.object({
     title: z.string().min(3).optional(),
     rewardSats: z.number().int().positive().optional(),
+    xpReward: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
   }).strict(),
 });
