@@ -81,7 +81,8 @@ export class UserSubmissionService {
       throw new Error('This task does not have a configured reward for your tier.');
     }
     const workerReward = applyDoubleReward(configuredReward, isCampaignDoubleRewardsActive);
-    const xpReward = task.xpRewardOverride ?? task.campaign.xpReward ?? 0;
+    const baseXpReward = task.xpRewardOverride ?? task.campaign.xpReward ?? 0;
+    const xpReward = applyDoubleReward(baseXpReward, isCampaignDoubleRewardsActive);
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
     const streakBonusSats = nextMilestone && streakEvaluation.nextStreak >= nextMilestone
