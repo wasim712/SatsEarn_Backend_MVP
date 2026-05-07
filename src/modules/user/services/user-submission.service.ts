@@ -81,7 +81,9 @@ export class UserSubmissionService {
       throw new Error('This task does not have a configured reward for your tier.');
     }
     const workerReward = applyDoubleReward(configuredReward, isCampaignDoubleRewardsActive);
-    const baseXpReward = task.xpRewardOverride ?? task.campaign.xpReward ?? 0;
+    const baseXpReward = task.xpRewardOverride && task.xpRewardOverride > 0
+      ? task.xpRewardOverride
+      : (task.campaign.xpReward ?? 0);
     const xpReward = applyDoubleReward(baseXpReward, isCampaignDoubleRewardsActive);
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
@@ -147,6 +149,14 @@ export class UserSubmissionService {
                 referenceId: submission.id,
               },
             });
+
+            await NotificationService.notifyUser(
+              userId,
+              'Streak Milestone Reward Unlocked',
+              `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
+              'SYSTEM_ALERT',
+              submission.id,
+            );
           }
 
           if (user.referredById) {
