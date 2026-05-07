@@ -27,6 +27,10 @@ export class AdminController {
   static async getPlatformSettings(req: Request, res: Response) { return adminManagementHandlers.getPlatformSettings(req, res); }
   static async updatePlatformSettings(req: Request, res: Response) { return adminManagementHandlers.updatePlatformSettings(req, res); }
   static async getAllUsers(req: Request, res: Response) { return adminManagementHandlers.getAllUsers(req, res); }
+  static async getUserDetails(req: Request, res: Response) { return adminManagementHandlers.getUserDetails(req, res); }
+  static async banUser(req: Request, res: Response) { return adminManagementHandlers.banUser(req, res); }
+  static async activateUser(req: Request, res: Response) { return adminManagementHandlers.activateUser(req, res); }
+  static async deleteUser(req: Request, res: Response) { return adminManagementHandlers.deleteUser(req, res); }
   static async createDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.createDailyQuiz(req, res); }
   static async getAllDailyQuizzes(req: Request, res: Response) { return adminManagementHandlers.getAllDailyQuizzes(req, res); }
   static async getDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.getDailyQuiz(req, res); }

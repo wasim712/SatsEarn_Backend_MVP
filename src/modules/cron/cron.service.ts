@@ -1,5 +1,6 @@
 import { SubmissionStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.client'; // Adjust path if needed
+import { NotificationService } from '../notifications/notification.service';
 import {
   DEFAULT_SECURITY_LOCK_DAYS,
   getSecurityUnlockAt,
@@ -65,6 +66,8 @@ export class CronService {
 
     // 2. Process them one by one safely
     for (const sub of readySubmissions) {
+      let satsUnlockedForSubmission = 0;
+
       await prisma.$transaction(async (tx) => {
         
         // A. Find the exact amount we promised them in the Ledger
@@ -80,6 +83,7 @@ export class CronService {
         if (!ledgerEntry) return; 
 
         const satsToUnlock = ledgerEntry.amountSats;
+        satsUnlockedForSubmission = satsToUnlock;
 
         // B. Mark submission as officially withdrawable
         await tx.submission.update({
@@ -98,6 +102,20 @@ export class CronService {
 
         totalSatsUnlocked += satsToUnlock;
       });
+
+      if (satsUnlockedForSubmission > 0) {
+        try {
+          await NotificationService.notifyUser(
+            sub.userId,
+            'Funds Unlocked',
+            `${satsUnlockedForSubmission} Sats from your accepted submission are now available in your wallet balance.`,
+            'SYSTEM_ALERT',
+            sub.id,
+          );
+        } catch (notifyError) {
+          console.error('Funds unlocked, but failed to send notification:', notifyError);
+        }
+      }
       
       unlockedCount++;
     }

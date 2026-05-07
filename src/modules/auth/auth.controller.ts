@@ -1,6 +1,28 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 
+const isDatabaseConnectionError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes('Server has closed the connection') ||
+    message.includes("Can't reach database server") ||
+    message.includes('ETIMEDOUT') ||
+    message.includes('ECONNRESET') ||
+    message.includes('ECONNREFUSED')
+  );
+};
+
+const handleAuthError = (res: Response, error: unknown) => {
+  if (isDatabaseConnectionError(error)) {
+    return res.status(503).json({
+      error: 'Database is temporarily unreachable. Please try again in a moment.',
+    });
+  }
+
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  return res.status(400).json({ error: message });
+};
+
 export class AuthController {
  static async signup (req: Request, res: Response) {
   try {
@@ -12,10 +34,10 @@ export class AuthController {
       ...req.body,
       clientIp // <-- Handing it off!
     });
-
+  
     res.status(201).json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    handleAuthError(res, error);
   }
 };
 
@@ -24,8 +46,8 @@ export class AuthController {
       const { email, token } = req.body;
       const result = await AuthService.verifyOtp(email, token);
       res.status(200).json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error) {
+      handleAuthError(res, error);
     }
   }
 
@@ -38,8 +60,8 @@ export class AuthController {
     const result = await AuthService.signIn(email, password, clientIp);
 
     res.status(200).json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error) {
+    handleAuthError(res, error);
   }
 };
 
@@ -49,8 +71,8 @@ export class AuthController {
     try {
       const result = await AuthService.requestPasswordReset(req.body.email);
       res.status(200).json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error) {
+      handleAuthError(res, error);
     }
   }
 
@@ -59,8 +81,8 @@ export class AuthController {
       const { email, token, newPassword } = req.body;
       const result = await AuthService.resetPassword(email, token, newPassword);
       res.status(200).json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error) {
+      handleAuthError(res, error);
     }
   }
 static async checkUsername(req: Request, res: Response) {

@@ -5,6 +5,13 @@ import {
   getReferralBonusAmount,
   getReviewReleaseAt,
 } from '../../../utils/submission-flow.util';
+import {
+  applyDoubleReward,
+  evaluateDailyActivityStreak,
+  getNextStreakMilestone,
+  getStreakMilestoneReward,
+  isDoubleRewardActive,
+} from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
 import { AiVerificationService } from '../../verification/verification.service';
 
@@ -27,6 +34,9 @@ export class UserSubmissionService {
         referredById: true,
         fullName: true,
         totalXp: true,
+        currentStreak: true,
+        lastActivityAt: true,
+        lastClaimedStreakMilestone: true,
         premiumTier: true,
         premiumExpiresAt: true,
       },
@@ -58,12 +68,26 @@ export class UserSubmissionService {
     else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
     else determinedStatus = SubmissionStatus.REJECTED;
 
-    const baseReward = task.baseRewardSatsOverride || task.campaign.baseRewardSats;
-    const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
+    const isCampaignDoubleRewardsActive = isDoubleRewardActive(
+      task.campaign.doubleRewardsStartAt,
+      task.campaign.doubleRewardsEndAt,
+    );
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
-    const workerReward = Number(rewardMatrix[activeTier as string]) || baseReward;
+    const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
+    const configuredReward = Number(rewardMatrix[activeTier as string] || 0);
+    if (configuredReward <= 0) {
+      throw new Error('This task does not have a configured reward for your tier.');
+    }
+    const workerReward = applyDoubleReward(configuredReward, isCampaignDoubleRewardsActive);
+    const baseXpReward = task.xpRewardOverride ?? task.campaign.xpReward ?? 0;
+    const xpReward = applyDoubleReward(baseXpReward, isCampaignDoubleRewardsActive);
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+    const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
+    const streakBonusSats = nextMilestone && streakEvaluation.nextStreak >= nextMilestone
+      ? getStreakMilestoneReward(nextMilestone)
+      : 0;
 
     const submission = await prisma.$transaction(
       async (tx) => {
@@ -89,7 +113,18 @@ export class UserSubmissionService {
         if (determinedStatus !== SubmissionStatus.REJECTED) {
           await tx.user.update({
             where: { id: userId },
-            data: { balancePending: { increment: workerReward } },
+            data: {
+              balancePending: { increment: workerReward },
+              totalXp: { increment: xpReward },
+              currentStreak: streakEvaluation.nextStreak,
+              lastActivityAt: new Date(),
+              ...(streakBonusSats > 0 && nextMilestone
+                ? {
+                    balanceAvailable: { increment: streakBonusSats },
+                    lastClaimedStreakMilestone: nextMilestone,
+                  }
+                : {}),
+            },
           });
 
           await tx.ledger.create({
@@ -102,6 +137,18 @@ export class UserSubmissionService {
             },
           });
 
+          if (streakBonusSats > 0 && nextMilestone) {
+            await tx.ledger.create({
+              data: {
+                userId,
+                amountSats: streakBonusSats,
+                type: 'STREAK_BONUS',
+                description: `Streak milestone reached: ${nextMilestone} days`,
+                referenceId: submission.id,
+              },
+            });
+          }
+
           if (user.referredById) {
             const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
 
@@ -110,7 +157,7 @@ export class UserSubmissionService {
                 referrer as any,
                 settings.referralBonusPercent,
               );
-              const referralBonus = getReferralBonusAmount(baseReward, commissionPercent);
+              const referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
 
               if (referralBonus > 0) {
                 await tx.user.update({
@@ -150,6 +197,16 @@ export class UserSubmissionService {
             'Submission Rejected',
             submission.rejectionReason || 'Your submission did not meet task requirements.',
             'SUBMISSION_REJECTED',
+            submission.id,
+          );
+        }
+
+        if (submission.status === SubmissionStatus.PENDING_24H) {
+          await NotificationService.notifyUser(
+            userId,
+            'Submission Accepted',
+            `Your submission for ${task.title} was accepted and added to your pending balance.`,
+            'SUBMISSION_APPROVED',
             submission.id,
           );
         }

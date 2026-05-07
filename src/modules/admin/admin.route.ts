@@ -50,6 +50,10 @@ router.post('/withdrawals/:id/reject', AdminController.rejectWithdrawal);
 router.get('/settings', AdminController.getPlatformSettings);
 router.put('/settings', AdminController.updatePlatformSettings);
 router.get('/users', AdminController.getAllUsers);
+router.get('/users/:id', AdminController.getUserDetails);
+router.post('/users/:id/ban', AdminController.banUser);
+router.post('/users/:id/activate', AdminController.activateUser);
+router.delete('/users/:id', AdminController.deleteUser);
 
 router.post('/quiz/daily', validate(createDailyQuizSchema), AdminController.createDailyQuiz);
 router.get('/quiz/daily', AdminController.getAllDailyQuizzes);
