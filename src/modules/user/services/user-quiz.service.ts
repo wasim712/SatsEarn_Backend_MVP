@@ -4,6 +4,7 @@ import {
   getNextStreakMilestone,
   getStreakMilestoneReward,
 } from '../../../utils/reward.util';
+import { NotificationService } from '../../notifications/notification.service';
 
 export class UserQuizService {
   static async submitQuizTask(userId: string, taskId: string, answers: string[]) {
@@ -178,12 +179,21 @@ export class UserQuizService {
       });
 
       if (finalRewardSats <= 0 && finalRewardXp <= 0 && streakBonusSats <= 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            currentStreak: streakEvaluation.nextStreak,
+            lastActivityAt: new Date(),
+          },
+        });
+
         return {
-          message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Study up for tomorrow!`,
+          message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Your daily streak activity was still counted.`,
           passed: false,
           score,
           rewardEarned: 0,
           xpEarned: 0,
+          streakBonusSats: 0,
         };
       }
 
@@ -222,6 +232,14 @@ export class UserQuizService {
             referenceId: attempt.id,
           },
         });
+
+        await NotificationService.notifyUser(
+          userId,
+          'Streak Milestone Reward Unlocked',
+          `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
+          'SYSTEM_ALERT',
+          attempt.id,
+        );
       }
 
       return {
