@@ -217,6 +217,7 @@ model Campaign {
   title              String
   description        String
   category           TaskCategory
+  coverImageUrl      String?
   
   targetUrl          String?
   socialHandleTarget String?      

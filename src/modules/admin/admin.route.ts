@@ -1,3 +1,4 @@
+import multer from 'multer';
 import { Router } from 'express';
 import { requireAdmin } from '../../middlewares/admin.middleware';
 import { requireAuth } from '../../middlewares/auth.middleware';
@@ -17,12 +18,17 @@ import {
 } from './admin.schema';
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 router.use(requireAuth, requireAdmin);
 
 router.get('/metrics', AdminController.getDashboardMetrics);
 
 router.get('/campaigns/:id/analytics', AdminController.getCampaignAnalytics);
+router.post('/campaigns/upload-cover', upload.single('coverImage'), AdminController.uploadCampaignCover);
 router.post('/campaigns', validate(createCampaignSchema), AdminController.createCampaign);
 router.get('/campaigns', AdminController.getAllCampaigns);
 router.patch('/campaigns/:id', validate(updateCampaignSchema), AdminController.updateCampaign);

@@ -5,6 +5,7 @@ import { adminManagementHandlers } from './controllers/admin-management.handlers
 export class AdminController {
   static async getDashboardMetrics(req: Request, res: Response) { return adminCampaignHandlers.getDashboardMetrics(req, res); }
   static async createCampaign(req: Request, res: Response) { return adminCampaignHandlers.createCampaign(req, res); }
+  static async uploadCampaignCover(req: Request, res: Response) { return adminCampaignHandlers.uploadCampaignCover(req, res); }
   static async getCampaignAnalytics(req: Request, res: Response) { return adminCampaignHandlers.getCampaignAnalytics(req, res); }
   static async getAllCampaigns(req: Request, res: Response) { return adminCampaignHandlers.getAllCampaigns(req, res); }
   static async getCampaignById(req: Request, res: Response) { return adminCampaignHandlers.getCampaignById(req, res); }
