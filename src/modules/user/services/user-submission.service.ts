@@ -55,8 +55,12 @@ export class UserSubmissionService {
     const existing = await prisma.submission.findUnique({
       where: { userId_taskId: { userId, taskId } },
     });
-    if (existing) {
+    if (existing && existing.status !== SubmissionStatus.REJECTED) {
       throw new Error('You have already submitted proof for this task.');
+    }
+
+    if (existing && existing.status === SubmissionStatus.REJECTED) {
+      await prisma.submission.delete({ where: { id: existing.id } });
     }
 
     const rulesContext = task.requirements || task.description || task.campaign.description;
@@ -188,10 +192,32 @@ export class UserSubmissionService {
             }
           }
 
-          await tx.campaign.update({
-            where: { id: liveCampaign.id },
-            data: { totalCompletions: { increment: 1 } },
-          });
+          const campaignTaskIds = (
+            await tx.task.findMany({
+              where: { campaignId: liveCampaign.id },
+              select: { id: true },
+            })
+          ).map((campaignTask) => campaignTask.id);
+
+          const completedTaskIdsForUser = new Set(
+            (
+              await tx.submission.findMany({
+                where: {
+                  userId,
+                  status: { not: SubmissionStatus.REJECTED },
+                  taskId: { in: campaignTaskIds },
+                },
+                select: { taskId: true },
+              })
+            ).map((item) => item.taskId),
+          );
+
+          if (campaignTaskIds.length > 0 && completedTaskIdsForUser.size === campaignTaskIds.length) {
+            await tx.campaign.update({
+              where: { id: liveCampaign.id },
+              data: { totalCompletions: { increment: 1 } },
+            });
+          }
         }
 
         return submission;

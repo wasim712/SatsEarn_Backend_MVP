@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { CloudinaryService } from '../../cloudinary/cloudinary.service';
 import { AdminService } from '../admin.service';
 
 export const adminCampaignHandlers = {
@@ -9,6 +10,18 @@ export const adminCampaignHandlers = {
   async createCampaign(req: Request, res: Response) {
     try { res.status(201).json({ message: 'Campaign created successfully', campaign: await AdminService.createCampaign(req.body) }); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async uploadCampaignCover(req: Request, res: Response) {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: 'Campaign cover image file is required.' });
+      }
+      const coverImageUrl = await CloudinaryService.uploadImageBuffer(file.buffer, 'campaign_covers');
+      res.status(200).json({ message: 'Campaign cover uploaded successfully', coverImageUrl });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
   },
   async getCampaignAnalytics(req: Request, res: Response) {
     try { res.status(200).json(await AdminService.getCampaignAnalytics(req.params.id as string)); }

@@ -8,6 +8,7 @@ export class AdminCampaignService {
         title: data.title,
         description: data.description,
         category: data.category,
+        coverImageUrl: data.coverImageUrl || null,
         targetUrl: data.targetUrl,
         socialHandleTarget: data.socialHandleTarget,
         maxCompletions: data.maxCompletions,
@@ -100,7 +101,15 @@ export class AdminCampaignService {
 
   static async updateCampaign(id: string, data: any) {
     await this.getCampaignById(id);
-    return await prisma.campaign.update({ where: { id }, data });
+    return await prisma.campaign.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(Object.prototype.hasOwnProperty.call(data, 'coverImageUrl')
+          ? { coverImageUrl: data.coverImageUrl || null }
+          : {}),
+      },
+    });
   }
 
   static async deleteCampaign(id: string) {
