@@ -1,4 +1,10 @@
 import { prisma } from '../../../db/prisma.client';
+import {
+  evaluateDailyActivityStreak,
+  getNextStreakMilestone,
+  getStreakMilestoneReward,
+} from '../../../utils/reward.util';
+import { NotificationService } from '../../notifications/notification.service';
 
 export class UserQuizService {
   static async submitQuizTask(userId: string, taskId: string, answers: string[]) {
@@ -27,34 +33,21 @@ export class UserQuizService {
   static async claimStreakBonus(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, currentStreak: true, lastActivityAt: true },
+      select: { id: true, currentStreak: true, lastClaimedStreakMilestone: true },
     });
 
     if (!user) throw new Error('User not found');
 
-    if (user.currentStreak <= 0 || user.currentStreak % 7 !== 0) {
-      throw new Error('No streak milestone available to claim right now.');
+    const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
+    if (!nextMilestone) {
+      throw new Error('All streak milestones have already been claimed.');
     }
 
-    const bonusSats = Math.floor(user.currentStreak / 7) * 100;
-
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
-        data: { balanceAvailable: { increment: bonusSats } },
-      });
-
-      await tx.ledger.create({
-        data: {
-          userId,
-          amountSats: bonusSats,
-          type: 'STREAK_BONUS',
-          description: `Claimed ${user.currentStreak}-day streak bonus`,
-        },
-      });
-    });
-
-    return { message: `Streak bonus claimed: ${bonusSats} Sats`, bonusSats };
+    return {
+      message: `Streak bonuses are now awarded automatically on activity completion. Next reward unlocks at ${nextMilestone} days.`,
+      currentStreak: user.currentStreak,
+      nextMilestone,
+    };
   }
 
   static async startTaskFlow(userId: string, taskId: string) {
@@ -109,6 +102,7 @@ export class UserQuizService {
       id: quiz.id,
       title: quiz.title,
       rewardSats: quiz.rewardSats,
+      xpReward: quiz.xpReward,
       questions: safeQuestions,
     };
   }
@@ -157,9 +151,22 @@ export class UserQuizService {
       }
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { currentStreak: true, lastActivityAt: true, lastClaimedStreakMilestone: true },
+    });
+    if (!user) throw new Error('User not found.');
+
     const passed = score === totalQuestions;
     const exactEarnedSats = (quiz.rewardSats / totalQuestions) * score;
     const finalRewardSats = Math.floor(exactEarnedSats);
+    const exactEarnedXp = totalQuestions > 0 ? (quiz.xpReward / totalQuestions) * score : 0;
+    const finalRewardXp = Math.floor(exactEarnedXp);
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+    const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
+    const streakBonusSats = nextMilestone && streakEvaluation.nextStreak >= nextMilestone
+      ? getStreakMilestoneReward(nextMilestone)
+      : 0;
 
     return await prisma.$transaction(async (tx) => {
       const attempt = await tx.quizAttempt.create({
@@ -171,29 +178,69 @@ export class UserQuizService {
         },
       });
 
-      if (finalRewardSats <= 0) {
+      if (finalRewardSats <= 0 && finalRewardXp <= 0 && streakBonusSats <= 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            currentStreak: streakEvaluation.nextStreak,
+            lastActivityAt: new Date(),
+          },
+        });
+
         return {
-          message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Study up for tomorrow!`,
+          message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Your daily streak activity was still counted.`,
           passed: false,
           score,
           rewardEarned: 0,
+          xpEarned: 0,
+          streakBonusSats: 0,
         };
       }
 
       await tx.user.update({
         where: { id: userId },
-        data: { balanceAvailable: { increment: finalRewardSats } },
-      });
-
-      await tx.ledger.create({
         data: {
-          userId,
-          amountSats: finalRewardSats,
-          type: 'DAILY_QUIZ_REWARD',
-          description: `Daily Quiz: ${quiz.title} (${score}/${totalQuestions} correct)`,
-          referenceId: attempt.id,
+          balanceAvailable: { increment: finalRewardSats + streakBonusSats },
+          totalXp: { increment: finalRewardXp },
+          currentStreak: streakEvaluation.nextStreak,
+          lastActivityAt: new Date(),
+          ...(streakBonusSats > 0 && nextMilestone
+            ? { lastClaimedStreakMilestone: nextMilestone }
+            : {}),
         },
       });
+
+      if (finalRewardSats > 0) {
+        await tx.ledger.create({
+          data: {
+            userId,
+            amountSats: finalRewardSats,
+            type: 'DAILY_QUIZ_REWARD',
+            description: `Daily Quiz: ${quiz.title} (${score}/${totalQuestions} correct)`,
+            referenceId: attempt.id,
+          },
+        });
+      }
+
+      if (streakBonusSats > 0 && nextMilestone) {
+        await tx.ledger.create({
+          data: {
+            userId,
+            amountSats: streakBonusSats,
+            type: 'STREAK_BONUS',
+            description: `Streak milestone reached: ${nextMilestone} days`,
+            referenceId: attempt.id,
+          },
+        });
+
+        await NotificationService.notifyUser(
+          userId,
+          'Streak Milestone Reward Unlocked',
+          `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
+          'SYSTEM_ALERT',
+          attempt.id,
+        );
+      }
 
       return {
         message: passed
@@ -202,6 +249,8 @@ export class UserQuizService {
         passed,
         score,
         rewardEarned: finalRewardSats,
+        xpEarned: finalRewardXp,
+        streakBonusSats,
       };
     });
   }

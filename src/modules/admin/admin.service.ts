@@ -95,10 +95,20 @@ export class AdminService {
   static async getAllUsers() {
     return await AdminUserService.getAllUsers();
   }
+  static async getUserDetails(userId: string) {
+    return await AdminUserService.getUserDetails(userId);
+  }
+  static async setUserActiveState(userId: string, isActive: boolean) {
+    return await AdminUserService.setUserActiveState(userId, isActive);
+  }
+  static async deleteUserAccount(userId: string) {
+    return await AdminUserService.deleteUserAccount(userId);
+  }
   static async createDailyQuiz(data: {
     date: string;
     title: string;
     rewardSats: number;
+    xpReward: number;
     questions: Array<{
       questionText: string;
       options: string[];
@@ -116,7 +126,7 @@ export class AdminService {
   }
   static async updateDailyQuiz(
     id: string,
-    data: { title?: string; rewardSats?: number; isActive?: boolean },
+    data: { title?: string; rewardSats?: number; xpReward?: number; isActive?: boolean },
   ) {
     return await AdminQuizService.updateDailyQuiz(id, data);
   }

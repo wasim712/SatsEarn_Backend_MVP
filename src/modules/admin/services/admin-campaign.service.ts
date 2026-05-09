@@ -8,6 +8,7 @@ export class AdminCampaignService {
         title: data.title,
         description: data.description,
         category: data.category,
+        coverImageUrl: data.coverImageUrl || null,
         targetUrl: data.targetUrl,
         socialHandleTarget: data.socialHandleTarget,
         maxCompletions: data.maxCompletions,
@@ -16,6 +17,9 @@ export class AdminCampaignService {
         isPremiumOnly: data.isPremiumOnly || false,
         requiredFreeTier: data.requiredFreeTier || 'BASIC',
         baseRewardSats: data.baseRewardSats,
+        xpReward: data.xpReward || 0,
+        doubleRewardsStartAt: data.doubleRewardsStartAt ? new Date(data.doubleRewardsStartAt) : null,
+        doubleRewardsEndAt: data.doubleRewardsEndAt ? new Date(data.doubleRewardsEndAt) : null,
         tierRewardMatrix: data.tierRewardMatrix,
       },
       include: {
@@ -97,7 +101,15 @@ export class AdminCampaignService {
 
   static async updateCampaign(id: string, data: any) {
     await this.getCampaignById(id);
-    return await prisma.campaign.update({ where: { id }, data });
+    return await prisma.campaign.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(Object.prototype.hasOwnProperty.call(data, 'coverImageUrl')
+          ? { coverImageUrl: data.coverImageUrl || null }
+          : {}),
+      },
+    });
   }
 
   static async deleteCampaign(id: string) {
@@ -119,6 +131,7 @@ export class AdminCampaignService {
         proofType: data.proofType || 'SCREENSHOT',
         baseRewardSatsOverride: data.baseRewardSatsOverride || null,
         tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
+        xpRewardOverride: data.xpRewardOverride ?? null,
         requirements: {
           ...(data.requirements || {}),
           requiredPlatform: data.requiredPlatform || 'NONE',
@@ -148,11 +161,12 @@ export class AdminCampaignService {
       title,
       description,
       targetUrl,
-      proofType,
-      baseRewardSatsOverride,
-      tierRewardMatrixOverride,
-      requirements,
-    } = data;
+        proofType,
+        baseRewardSatsOverride,
+        tierRewardMatrixOverride,
+        xpRewardOverride,
+        requirements,
+      } = data;
 
     return await prisma.task.update({
       where: { id: taskId },
@@ -163,6 +177,7 @@ export class AdminCampaignService {
         proofType,
         baseRewardSatsOverride,
         tierRewardMatrixOverride,
+        xpRewardOverride,
         requirements,
       },
     });

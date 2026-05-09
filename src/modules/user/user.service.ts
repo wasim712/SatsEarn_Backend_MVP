@@ -73,6 +73,16 @@ export class UserService {
     const cappedXp = Math.min(user.totalXp, maxXp);
     const level = Math.min(200, Math.floor(cappedXp / 1000) + 1);
     const nextLevelTotalXp = level * 1000;
+    const tierThresholds = [
+      { tier: 'BASIC', xp: 0 },
+      { tier: 'COPPER', xp: 10000 },
+      { tier: 'BRONZE', xp: 50000 },
+      { tier: 'SILVER', xp: 100000 },
+      { tier: 'GOLD', xp: 150000 },
+    ];
+    const currentTierIndex = tierThresholds.findIndex((entry) => entry.tier === freeTier);
+    const nextTierEntry = currentTierIndex >= 0 && currentTierIndex < tierThresholds.length - 1 ? tierThresholds[currentTierIndex + 1] : null;
+    const xpToNextTier = nextTierEntry ? Math.max(nextTierEntry.xp - user.totalXp, 0) : 0;
     const currentLevelProgressPercent = ((cappedXp % 1000) / 1000) * 100;
     const isMaxLevel = cappedXp >= maxXp;
 
@@ -99,6 +109,8 @@ export class UserService {
         progressPercent: isMaxLevel ? 100 : currentLevelProgressPercent,
         tasksCompleted: user._count.submissions,
         activeReferrals: user._count.referrals,
+        nextTier: nextTierEntry?.tier || null,
+        xpToNextTier,
       },
       recentActivity: user.transactions,
       recentSubmissions: await Promise.all(

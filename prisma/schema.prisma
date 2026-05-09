@@ -136,6 +136,7 @@ id               String   @id @default(uuid())
   premiumExpiresAt DateTime?            
 
   currentStreak    Int      @default(0)
+  lastClaimedStreakMilestone Int @default(0)
   lastActivityAt   DateTime @default(now())
   registrationIp   String?  // The IP they used to create the account
   lastIpAddress    String?  // The IP they last logged in with
@@ -216,6 +217,7 @@ model Campaign {
   title              String
   description        String
   category           TaskCategory
+  coverImageUrl      String?
   
   targetUrl          String?
   socialHandleTarget String?      
@@ -229,6 +231,9 @@ model Campaign {
   // --- THE ECONOMICS (Explicit Pricing Matrix) ---
   baseRewardSats     Int          // The anchor for calculating referral commissions
   tierRewardMatrix   Json         // Stores exact Sats for all 10 tiers e.g. {"BASIC": 10, ..., "FOUNDER": 50}
+  xpReward           Int          @default(0)
+  doubleRewardsStartAt DateTime?
+  doubleRewardsEndAt   DateTime?
   
   totalCompletions   Int          @default(0)
   maxCompletions     Int          
@@ -254,6 +259,7 @@ model Task {
   // Allows a specific task in a campaign to have a different economy than the campaign default
   baseRewardSatsOverride   Int?         
   tierRewardMatrixOverride Json?        
+  xpRewardOverride         Int?
   
   // Flexible rules (e.g., {"minFollowers": 100}) for the AI Prompt
   requirements             Json?        
@@ -346,6 +352,7 @@ model DailyQuiz {
   
   title      String   // e.g., "Bitcoin Basics: The Halving"
   rewardSats Int      @default(10) // Small dopamine hit
+  xpReward   Int      @default(0)
   isActive   Boolean  @default(true)
 
   questions  QuizQuestion[]
