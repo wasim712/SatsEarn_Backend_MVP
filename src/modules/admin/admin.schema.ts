@@ -123,6 +123,37 @@ export const updateAnnouncementSchema = z.object({
   }),
 });
 
+export const createBlogPostSchema = z.object({
+  body: z.object({
+    title: z.string().min(5, 'Title must be at least 5 characters'),
+    slug: z.string().min(3).regex(/^[a-z0-9-]+$/, 'Slug must use lowercase letters, numbers, and hyphens'),
+    excerpt: z.string().max(500).optional().or(z.literal('')),
+    content: z.string().min(20, 'Content must be at least 20 characters'),
+    coverImageUrl: z.string().url().optional().or(z.literal('')),
+    isPublished: z.boolean().default(false),
+  }),
+});
+
+export const updateBlogPostSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid blog post ID format'),
+  }),
+  body: z.object({
+    title: z.string().min(5).optional(),
+    slug: z.string().min(3).regex(/^[a-z0-9-]+$/).optional(),
+    excerpt: z.string().max(500).optional().or(z.literal('')),
+    content: z.string().min(20).optional(),
+    coverImageUrl: z.string().url().optional().or(z.literal('')).nullable(),
+    isPublished: z.boolean().optional(),
+  }),
+});
+
+export const blogPostIdParamSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid blog post ID format'),
+  }),
+});
+
 // --- DAILY QUIZ ---
 const quizQuestionSchema = z.object({
   questionText: z.string().min(5, "Question must be at least 5 characters"),
