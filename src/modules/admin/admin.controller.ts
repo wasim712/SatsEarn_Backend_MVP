@@ -37,4 +37,14 @@ export class AdminController {
   static async getDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.getDailyQuiz(req, res); }
   static async updateDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.updateDailyQuiz(req, res); }
   static async deleteDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.deleteDailyQuiz(req, res); }
+  static async getAllBugReports(req: Request, res: Response) { return adminManagementHandlers.getAllBugReports(req, res); }
+  static async reviewBugReport(req: Request, res: Response) { return adminManagementHandlers.reviewBugReport(req, res); }
+  static async createBlogPost(req: Request, res: Response) { return adminManagementHandlers.createBlogPost(req, res); }
+  static async getAllBlogPosts(req: Request, res: Response) { return adminManagementHandlers.getAllBlogPosts(req, res); }
+  static async updateBlogPost(req: Request, res: Response) { return adminManagementHandlers.updateBlogPost(req, res); }
+  static async deleteBlogPost(req: Request, res: Response) { return adminManagementHandlers.deleteBlogPost(req, res); }
+  static async createFaqItem(req: Request, res: Response) { return adminManagementHandlers.createFaqItem(req, res); }
+  static async getAllFaqItems(req: Request, res: Response) { return adminManagementHandlers.getAllFaqItems(req, res); }
+  static async updateFaqItem(req: Request, res: Response) { return adminManagementHandlers.updateFaqItem(req, res); }
+  static async deleteFaqItem(req: Request, res: Response) { return adminManagementHandlers.deleteFaqItem(req, res); }
 }

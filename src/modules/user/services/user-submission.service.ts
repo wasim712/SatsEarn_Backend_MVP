@@ -59,10 +59,6 @@ export class UserSubmissionService {
       throw new Error('You have already submitted proof for this task.');
     }
 
-    if (existing && existing.status === SubmissionStatus.REJECTED) {
-      await prisma.submission.delete({ where: { id: existing.id } });
-    }
-
     const rulesContext = task.requirements || task.description || task.campaign.description;
     const proofContent = proofData.screenshotUrl || proofData.proofText || '';
     const aiResult = await AiVerificationService.analyzeProof(proofContent, rulesContext);
@@ -95,26 +91,40 @@ export class UserSubmissionService {
       ? getStreakMilestoneReward(nextMilestone)
       : 0;
 
-    const submission = await prisma.$transaction(
-      async (tx) => {
+    const submission = await prisma.$transaction(async (tx) => {
         const liveCampaign = await tx.campaign.findUnique({ where: { id: task.campaign.id } });
         if (!liveCampaign || liveCampaign.totalCompletions >= liveCampaign.maxCompletions) {
           throw new Error('This campaign filled up while your proof was being verified.');
         }
 
-        const submission = await tx.submission.create({
-          data: {
-            userId,
-            taskId,
-            screenshotUrl: proofData.screenshotUrl || null,
-            proofText: proofData.proofText || null,
-            ipAddress: clientIp,
-            confidenceScore: aiResult.score,
-            status: determinedStatus,
-            rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
-            unlockAt: determinedStatus === SubmissionStatus.PENDING_24H ? getReviewReleaseAt() : null,
-          },
-        });
+        const submission = existing && existing.status === SubmissionStatus.REJECTED
+          ? await tx.submission.update({
+              where: { id: existing.id },
+              data: {
+                screenshotUrl: proofData.screenshotUrl || null,
+                proofText: proofData.proofText || null,
+                ipAddress: clientIp,
+                confidenceScore: aiResult.score,
+                status: determinedStatus,
+                rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
+                unlockAt: determinedStatus === SubmissionStatus.PENDING_24H ? getReviewReleaseAt() : null,
+                reviewedById: null,
+                submittedAt: new Date(),
+              },
+            })
+          : await tx.submission.create({
+              data: {
+                userId,
+                taskId,
+                screenshotUrl: proofData.screenshotUrl || null,
+                proofText: proofData.proofText || null,
+                ipAddress: clientIp,
+                confidenceScore: aiResult.score,
+                status: determinedStatus,
+                rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
+                unlockAt: determinedStatus === SubmissionStatus.PENDING_24H ? getReviewReleaseAt() : null,
+              },
+            });
 
         if (determinedStatus !== SubmissionStatus.REJECTED) {
           await tx.user.update({
@@ -153,14 +163,6 @@ export class UserSubmissionService {
                 referenceId: submission.id,
               },
             });
-
-            await NotificationService.notifyUser(
-              userId,
-              'Streak Milestone Reward Unlocked',
-              `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
-              'SYSTEM_ALERT',
-              submission.id,
-            );
           }
 
           if (user.referredById) {
@@ -221,9 +223,10 @@ export class UserSubmissionService {
         }
 
         return submission;
-      },
-      { isolationLevel: 'Serializable' },
-    );
+      }, {
+        maxWait: 15000,
+        timeout: 20000,
+      });
 
     if (submission) {
       try {
@@ -243,6 +246,16 @@ export class UserSubmissionService {
             'Submission Accepted',
             `Your submission for ${task.title} was accepted and added to your pending balance.`,
             'SUBMISSION_APPROVED',
+            submission.id,
+          );
+        }
+
+        if (submission.status !== SubmissionStatus.REJECTED && streakBonusSats > 0 && nextMilestone) {
+          await NotificationService.notifyUser(
+            userId,
+            'Streak Milestone Reward Unlocked',
+            `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
+            'SYSTEM_ALERT',
             submission.id,
           );
         }

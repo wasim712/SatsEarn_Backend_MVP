@@ -6,6 +6,7 @@ import { UserQuizService } from './services/user-quiz.service';
 import { UserReferralService } from './services/user-referral.service';
 import { UserSubmissionService } from './services/user-submission.service';
 import { UserWithdrawalService } from './services/user-withdrawal.service';
+import { UserBugReportService } from './services/user-bug-report.service';
 
 export class UserService {
   static async getProfile(userId: string) {
@@ -247,5 +248,13 @@ export class UserService {
 
   static async getActiveAnnouncements() {
     return await UserCampaignService.getActiveAnnouncements();
+  }
+
+  static async submitBugReport(userId: string, data: { title: string; description: string; screenshotUrl?: string | null }) {
+    return await UserBugReportService.submitBugReport(userId, data);
+  }
+
+  static async getMyBugReports(userId: string) {
+    return await UserBugReportService.getMyBugReports(userId);
   }
 }

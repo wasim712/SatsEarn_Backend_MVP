@@ -2,6 +2,7 @@ import { prisma } from '../../../db/prisma.client';
 import { CryptoUtil } from '../../../utils/crypto.util';
 import { FraudService } from '../../fraud/fraud.service';
 import { NotificationService } from '../../notifications/notification.service';
+import { TierUtils } from '../../../utils/tier.utils';
 
 function decryptWithdrawal<T extends Record<string, any>>(withdrawal: T): T {
   return {
@@ -23,10 +24,20 @@ export class UserWithdrawalService {
 
   static async requestWithdrawal(userId: string, amountSats: number, lightningInvoice: string) {
     const settings = await prisma.platformSettings.findFirst();
-    const minWithdrawal = settings?.minWithdrawalSats || 25000;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true },
+    });
+
+    if (!user) throw new Error('User not found.');
+
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const tierMinWithdrawalMatrix = (settings?.tierMinWithdrawalMatrix as Record<string, number> | null) || null;
+    const minWithdrawal = Number(tierMinWithdrawalMatrix?.[String(activeTier)] || settings?.minWithdrawalSats || 25000);
 
     if (amountSats < minWithdrawal) {
-      throw new Error(`The minimum withdrawal amount is ${minWithdrawal.toLocaleString()} Sats.`);
+      throw new Error(`The minimum withdrawal amount for your tier is ${minWithdrawal.toLocaleString()} Sats.`);
     }
 
     const encryptedInvoice = CryptoUtil.encrypt(lightningInvoice);

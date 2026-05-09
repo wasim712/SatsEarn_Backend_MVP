@@ -5,7 +5,11 @@ import { env } from '../config/env';
 
 // 1. Create a native Postgres connection pool using your env URL
 export const pool = new Pool({ 
-  connectionString: env.DATABASE_URL 
+  connectionString: env.DATABASE_URL,
+  max: 5,
+  min: 1,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 // 2. Wrap the pool in Prisma's official Postgres Adapter

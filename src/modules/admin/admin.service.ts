@@ -3,9 +3,12 @@ import { AdminCampaignService } from "./services/admin-campaign.service";
 import { AdminDashboardService } from "./services/admin-dashboard.service";
 import { AdminQuizService } from "./services/admin-quiz.service";
 import { AdminSettingsService } from "./services/admin-settings.service";
+import { AdminBlogService } from './services/admin-blog.service';
 import { AdminSubmissionService } from "./services/admin-submission.service";
 import { AdminUserService } from "./services/admin-user.service";
 import { AdminWithdrawalService } from "./services/admin-withdrawal.service";
+import { AdminBugReportService } from './services/admin-bug-report.service';
+import { AdminFaqService } from './services/admin-faq.service';
 
 export class AdminService {
   static async getOverviewMetrics() {
@@ -132,5 +135,44 @@ export class AdminService {
   }
   static async deleteDailyQuiz(id: string) {
     return await AdminQuizService.deleteDailyQuiz(id);
+  }
+  static async getAllBugReports() {
+    return await AdminBugReportService.getAllBugReports();
+  }
+
+  static async reviewBugReport(reportId: string, adminId: string, payload: { status: 'REWARDED' | 'REJECTED'; rewardSats?: number; adminNotes?: string }) {
+    return await AdminBugReportService.reviewBugReport(reportId, adminId, payload);
+  }
+
+  static async createBlogPost(data: { title: string; slug: string; excerpt?: string; content: string; coverImageUrl?: string; isPublished?: boolean }) {
+    return await AdminBlogService.createBlogPost(data);
+  }
+
+  static async getAllBlogPosts() {
+    return await AdminBlogService.getAllBlogPosts();
+  }
+
+  static async updateBlogPost(id: string, data: { title?: string; slug?: string; excerpt?: string; content?: string; coverImageUrl?: string | null; isPublished?: boolean }) {
+    return await AdminBlogService.updateBlogPost(id, data);
+  }
+
+  static async deleteBlogPost(id: string) {
+    return await AdminBlogService.deleteBlogPost(id);
+  }
+
+  static async createFaqItem(data: { question: string; answer: string; category?: string; sortOrder?: number; isActive?: boolean }) {
+    return await AdminFaqService.createFaqItem(data);
+  }
+
+  static async getAllFaqItems() {
+    return await AdminFaqService.getAllFaqItems();
+  }
+
+  static async updateFaqItem(id: string, data: { question?: string; answer?: string; category?: string; sortOrder?: number; isActive?: boolean }) {
+    return await AdminFaqService.updateFaqItem(id, data);
+  }
+
+  static async deleteFaqItem(id: string) {
+    return await AdminFaqService.deleteFaqItem(id);
   }
 }

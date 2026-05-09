@@ -6,12 +6,43 @@ export class NotificationService {
   // ─── DISPATCHERS ───
 
   static async notifyUser(userId: string, title: string, message: string, type: NotificationType, referenceId?: string) {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        userId,
+        forAdmin: false,
+        title,
+        message,
+        type,
+        referenceId: referenceId || null,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
     return await prisma.notification.create({
       data: { userId, forAdmin: false, title, message, type, referenceId }
     });
   }
 
   static async notifyAdmins(title: string, message: string, type: NotificationType, referenceId?: string) {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        forAdmin: true,
+        title,
+        message,
+        type,
+        referenceId: referenceId || null,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
     return await prisma.notification.create({
       data: { forAdmin: true, title, message, type, referenceId }
     });

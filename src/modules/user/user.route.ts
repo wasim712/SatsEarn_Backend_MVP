@@ -1,11 +1,13 @@
 import multer from 'multer';
 import { Router } from 'express';
+import { prisma } from '../../db/prisma.client';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { UserController } from './user.controller';
 import {
   requestWithdrawalSchema,
+  submitBugReportSchema,
   submitDailyQuizSchema,
   submitQuizSchema,
   updateProfileSchema,
@@ -25,6 +27,10 @@ router.get('/dashboard', UserController.getDashboard);
 router.post('/change-password', UserController.changePassword);
 router.delete('/account', UserController.deleteAccount);
 
+router.get('/settings', async (_req, res) => {
+  const settings = await prisma.platformSettings.findFirst();
+  res.json(settings || {});
+});
 router.get('/campaigns', UserController.getCampaigns);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
 
@@ -35,6 +41,8 @@ router.post('/tasks/:taskId/start', UserController.startTask);
 router.get('/referrals', UserController.getReferralDashboard);
 router.get('/unlocks', UserController.getUnlockSchedule);
 router.get('/submissions', UserController.getSubmissionHistory);
+router.get('/bug-reports', UserController.getMyBugReports);
+router.post('/bug-reports', upload.single('screenshot'), validate(submitBugReportSchema), UserController.submitBugReport);
 
 router.post('/streak/claim', UserController.claimStreak);
 router.get('/quiz/today', UserController.getTodayQuiz);

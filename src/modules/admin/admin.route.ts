@@ -6,14 +6,20 @@ import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { AdminController } from './admin.controller';
 import {
+  blogPostIdParamSchema,
   createAnnouncementSchema,
+  createBlogPostSchema,
   createCampaignSchema,
   createDailyQuizSchema,
+  createFaqItemSchema,
   createTaskSchema,
+  faqItemIdParamSchema,
   quizIdParamSchema,
   updateAnnouncementSchema,
+  updateBlogPostSchema,
   updateCampaignSchema,
   updateDailyQuizSchema,
+  updateFaqItemSchema,
   updateTaskSchema,
 } from './admin.schema';
 
@@ -48,6 +54,19 @@ router.delete('/announcements/:id', AdminController.deleteAnnouncement);
 
 router.get('/submissions/pending', AdminController.getPendingSubmissions);
 router.post('/submissions/:id/review', AdminController.reviewSubmission);
+
+router.get('/bug-reports', AdminController.getAllBugReports);
+router.post('/bug-reports/:id/review', AdminController.reviewBugReport);
+
+router.get('/blogs', AdminController.getAllBlogPosts);
+router.post('/blogs', validate(createBlogPostSchema), AdminController.createBlogPost);
+router.patch('/blogs/:id', validate(updateBlogPostSchema), AdminController.updateBlogPost);
+router.delete('/blogs/:id', validate(blogPostIdParamSchema), AdminController.deleteBlogPost);
+
+router.get('/faqs', AdminController.getAllFaqItems);
+router.post('/faqs', validate(createFaqItemSchema), AdminController.createFaqItem);
+router.patch('/faqs/:id', validate(updateFaqItemSchema), AdminController.updateFaqItem);
+router.delete('/faqs/:id', validate(faqItemIdParamSchema), AdminController.deleteFaqItem);
 
 router.get('/withdrawals', AdminController.getWithdrawals);
 router.post('/withdrawals/:id/approve', AdminController.approveWithdrawal);

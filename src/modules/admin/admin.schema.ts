@@ -13,7 +13,7 @@ export const createCampaignSchema = z.object({
     isPremiumOnly: z.boolean().default(false),
     requiredFreeTier: z.nativeEnum(FreeTier).default('BASIC'),
     requiredPlatform: z.nativeEnum(CampaignDevice).default('NONE'),
-    
+
     baseRewardSats: z.number().int().positive(),
     xpReward: z.number().int().min(0).default(0),
     doubleRewardsStartAt: z.string().datetime().optional(),
@@ -31,7 +31,7 @@ export const createCampaignSchema = z.object({
       ELITE: z.number().int(),
       FOUNDER: z.number().int(),
     }),
-    
+
     maxCompletions: z.number().int().positive()
   })
 });
@@ -48,7 +48,7 @@ export const updateCampaignSchema = z.object({
     targetCountries: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
     requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
-    
+
     // NEW ECONOMICS
     isPremiumOnly: z.boolean().optional(),
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
@@ -93,15 +93,15 @@ export const updateTaskSchema = z.object({
   body: z.object({
     title: z.string().min(3).optional(),
     description: z.string().min(5).optional(),
-    
-    // 🚀 NEW: Add it to the update schema too!
+
+
     proofType: ProofTypeEnum.optional(),
 
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
-tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
 // --- ANNOUNCEMENTS ---
@@ -120,6 +120,66 @@ export const updateAnnouncementSchema = z.object({
     content: z.string().min(10).optional(),
     type: z.enum(['INFO', 'WARNING', 'SUCCESS', 'PROMOTION']).optional(),
     isActive: z.boolean().optional(),
+  }),
+});
+
+export const createBlogPostSchema = z.object({
+  body: z.object({
+    title: z.string().min(5, 'Title must be at least 5 characters'),
+    slug: z.string().min(3).regex(/^[a-z0-9-]+$/, 'Slug must use lowercase letters, numbers, and hyphens'),
+    excerpt: z.string().max(500).optional().or(z.literal('')),
+    content: z.string().min(20, 'Content must be at least 20 characters'),
+    coverImageUrl: z.string().url().optional().or(z.literal('')),
+    isPublished: z.boolean().default(false),
+  }),
+});
+
+export const updateBlogPostSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid blog post ID format'),
+  }),
+  body: z.object({
+    title: z.string().min(5).optional(),
+    slug: z.string().min(3).regex(/^[a-z0-9-]+$/).optional(),
+    excerpt: z.string().max(500).optional().or(z.literal('')),
+    content: z.string().min(20).optional(),
+    coverImageUrl: z.string().url().optional().or(z.literal('')).nullable(),
+    isPublished: z.boolean().optional(),
+  }),
+});
+
+export const blogPostIdParamSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid blog post ID format'),
+  }),
+});
+
+export const createFaqItemSchema = z.object({
+  body: z.object({
+    question: z.string().min(5, 'Question must be at least 5 characters'),
+    answer: z.string().min(10, 'Answer must be at least 10 characters'),
+    category: z.string().max(100).optional().or(z.literal('')),
+    sortOrder: z.number().int().min(0).default(0),
+    isActive: z.boolean().default(true),
+  }),
+});
+
+export const updateFaqItemSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid FAQ item ID format'),
+  }),
+  body: z.object({
+    question: z.string().min(5).optional(),
+    answer: z.string().min(10).optional(),
+    category: z.string().max(100).optional().or(z.literal('')),
+    sortOrder: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+
+export const faqItemIdParamSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Invalid FAQ item ID format'),
   }),
 });
 

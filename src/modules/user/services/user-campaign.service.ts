@@ -119,10 +119,13 @@ export class UserCampaignService {
       tasks: campaign.tasks.map((task) => {
         const rewardMatrix = (task.tierRewardMatrixOverride as any) || (campaign.tierRewardMatrix as any);
         const taskRewardSats = applyDoubleReward(Number(rewardMatrix?.[activeTier as string] || 0), doubleRewardsActive);
+        const requirements = (task.requirements as any) || {};
+
         return {
           ...task,
           taskRewardSats,
           xpReward: task.xpRewardOverride ?? campaign.xpReward ?? 0,
+          requiredPlatform: requirements.requiredPlatform || 'NONE',
         };
       }),
     };
