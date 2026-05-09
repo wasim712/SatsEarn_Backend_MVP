@@ -8,6 +8,7 @@ import { AdminSubmissionService } from "./services/admin-submission.service";
 import { AdminUserService } from "./services/admin-user.service";
 import { AdminWithdrawalService } from "./services/admin-withdrawal.service";
 import { AdminBugReportService } from './services/admin-bug-report.service';
+import { AdminFaqService } from './services/admin-faq.service';
 
 export class AdminService {
   static async getOverviewMetrics() {
@@ -157,5 +158,21 @@ export class AdminService {
 
   static async deleteBlogPost(id: string) {
     return await AdminBlogService.deleteBlogPost(id);
+  }
+
+  static async createFaqItem(data: { question: string; answer: string; category?: string; sortOrder?: number; isActive?: boolean }) {
+    return await AdminFaqService.createFaqItem(data);
+  }
+
+  static async getAllFaqItems() {
+    return await AdminFaqService.getAllFaqItems();
+  }
+
+  static async updateFaqItem(id: string, data: { question?: string; answer?: string; category?: string; sortOrder?: number; isActive?: boolean }) {
+    return await AdminFaqService.updateFaqItem(id, data);
+  }
+
+  static async deleteFaqItem(id: string) {
+    return await AdminFaqService.deleteFaqItem(id);
   }
 }

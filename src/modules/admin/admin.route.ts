@@ -11,12 +11,15 @@ import {
   createBlogPostSchema,
   createCampaignSchema,
   createDailyQuizSchema,
+  createFaqItemSchema,
   createTaskSchema,
+  faqItemIdParamSchema,
   quizIdParamSchema,
   updateAnnouncementSchema,
   updateBlogPostSchema,
   updateCampaignSchema,
   updateDailyQuizSchema,
+  updateFaqItemSchema,
   updateTaskSchema,
 } from './admin.schema';
 
@@ -59,6 +62,11 @@ router.get('/blogs', AdminController.getAllBlogPosts);
 router.post('/blogs', validate(createBlogPostSchema), AdminController.createBlogPost);
 router.patch('/blogs/:id', validate(updateBlogPostSchema), AdminController.updateBlogPost);
 router.delete('/blogs/:id', validate(blogPostIdParamSchema), AdminController.deleteBlogPost);
+
+router.get('/faqs', AdminController.getAllFaqItems);
+router.post('/faqs', validate(createFaqItemSchema), AdminController.createFaqItem);
+router.patch('/faqs/:id', validate(updateFaqItemSchema), AdminController.updateFaqItem);
+router.delete('/faqs/:id', validate(faqItemIdParamSchema), AdminController.deleteFaqItem);
 
 router.get('/withdrawals', AdminController.getWithdrawals);
 router.post('/withdrawals/:id/approve', AdminController.approveWithdrawal);

@@ -1,15 +1,20 @@
 import { prisma } from '../../../db/prisma.client';
+import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
 
 export class AdminSubmissionService {
   static async getPendingSubmissions() {
-    return await prisma.submission.findMany({
+    const submissions = await prisma.submission.findMany({
       where: { status: 'MANUAL_REVIEW' },
       include: {
         user: {
           select: {
             email: true,
             fullName: true,
+            totalXp: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            isActive: true,
           },
         },
         task: {
@@ -20,60 +25,59 @@ export class AdminSubmissionService {
       },
       orderBy: { submittedAt: 'asc' },
     });
+
+    return submissions.map((submission) => {
+      const user = submission.user as any;
+      const isPremium = TierUtils.isPremiumActive(user);
+      const activeTier = isPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp || 0);
+
+      return {
+        ...submission,
+        user: {
+          ...submission.user,
+          isPremium,
+          activeTier,
+        },
+      };
+    });
   }
 
-static async reviewSubmission(
+  static async reviewSubmission(
     submissionId: string,
     status: 'LOCKED_15D' | 'REJECTED',
     rejectionReason?: string,
     adminId?: string,
   ) {
-    // ==========================================
-    // 1. FAST PHASE: The Database Transaction
-    // ==========================================
-    const updatedSubmission = await prisma.$transaction(
-      async (tx) => {
-        const submission = await tx.submission.findUnique({
-          where: { id: submissionId },
-          include: { task: true }, // Include task so we can use the title later
-        });
+    const existingSubmission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { task: true },
+    });
 
-        if (!submission) throw new Error('Submission not found');
-        if (submission.status !== 'MANUAL_REVIEW') {
-          throw new Error(`Submission already processed: ${submission.status}`);
-        }
+    if (!existingSubmission) throw new Error('Submission not found');
+    if (existingSubmission.status !== 'MANUAL_REVIEW') {
+      throw new Error(`Submission already processed: ${existingSubmission.status}`);
+    }
 
-        if (status === 'LOCKED_15D') {
-          return await tx.submission.update({
-            where: { id: submissionId },
-            data: {
-              status: 'LOCKED_15D',
-              reviewedById: adminId,
-              rejectionReason: null,
-            },
-            include: { task: true } // Return task for the notification
-          });
-        }
-
-        // Otherwise, it's REJECTED
-        return await tx.submission.update({
-          where: { id: submissionId },
-          data: {
-            status: 'REJECTED',
-            rejectionReason,
-            reviewedById: adminId,
-          },
-          include: { task: true } // Return task for the notification
-        });
+    const updateResult = await prisma.submission.updateMany({
+      where: { id: submissionId, status: 'MANUAL_REVIEW' },
+      data: {
+        status,
+        reviewedById: adminId,
+        rejectionReason: status === 'REJECTED' ? rejectionReason : null,
       },
-      { isolationLevel: 'Serializable' }
-    );
+    });
 
-    // ==========================================
-    // 2. SLOW PHASE: Side Effects (Outside the Tx)
-    // ==========================================
-    // We wrap this in a try/catch so if the notification system crashes, 
-    // it doesn't break the successful review that just happened in the DB.
+    if (updateResult.count === 0) {
+      throw new Error('Submission was already processed by another admin.');
+    }
+
+    const updatedSubmission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { task: true },
+    });
+
+    if (!updatedSubmission) throw new Error('Submission not found after update.');
+
     try {
       if (status === 'LOCKED_15D') {
         await NotificationService.notifyUser(
