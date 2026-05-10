@@ -264,12 +264,10 @@ model Task {
   description              String?
   targetUrl                String?
   proofType                ProofType    @default(SCREENSHOT)
-  // Allows a specific task in a campaign to have a different economy than the campaign default
   baseRewardSatsOverride   Int?         
   tierRewardMatrixOverride Json?        
   xpRewardOverride         Int?
-  
-  // Flexible rules (e.g., {"minFollowers": 100}) for the AI Prompt
+
   requirements             Json?        
 
   submissions              Submission[]
@@ -361,6 +359,19 @@ model BlogPost {
   updatedAt    DateTime @updatedAt
 
   @@index([isPublished, publishedAt])
+}
+
+model FaqItem {
+  id         String   @id @default(uuid())
+  question   String
+  answer     String   @db.Text
+  category   String?
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
 }
 
 // ==========================================

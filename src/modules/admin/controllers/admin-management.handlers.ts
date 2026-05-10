@@ -76,6 +76,22 @@ export const adminManagementHandlers = {
     try { res.status(200).json(await AdminService.deleteBlogPost(req.params.id as string)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async createFaqItem(req: Request, res: Response) {
+    try { res.status(201).json({ message: 'FAQ item created', item: await AdminService.createFaqItem(req.body) }); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async getAllFaqItems(_req: Request, res: Response) {
+    try { res.status(200).json(await AdminService.getAllFaqItems()); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
+  async updateFaqItem(req: Request, res: Response) {
+    try { res.status(200).json({ message: 'FAQ item updated', item: await AdminService.updateFaqItem(req.params.id as string, req.body) }); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async deleteFaqItem(req: Request, res: Response) {
+    try { res.status(200).json(await AdminService.deleteFaqItem(req.params.id as string)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async getAllUsers(_req: Request, res: Response) {
     try { res.status(200).json(await AdminService.getAllUsers()); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
