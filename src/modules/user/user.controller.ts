@@ -15,6 +15,8 @@ export class UserController {
   static async getUnlockSchedule(req: Request, res: Response) { return userTaskHandlers.getUnlockSchedule(req, res); }
   static async submitBugReport(req: Request, res: Response) { return userTaskHandlers.submitBugReport(req, res); }
   static async getMyBugReports(req: Request, res: Response) { return userTaskHandlers.getMyBugReports(req, res); }
+  static async getPublishedBlogs(req: Request, res: Response) { return userTaskHandlers.getPublishedBlogs(req, res); }
+  static async getActiveFaqs(req: Request, res: Response) { return userTaskHandlers.getActiveFaqs(req, res); }
   static async getSubmissionHistory(req: Request, res: Response) { return userTaskHandlers.getSubmissionHistory(req, res); }
   static async submitQuiz(req: Request, res: Response) { return userTaskHandlers.submitQuiz(req, res); }
   static async claimStreak(req: Request, res: Response) { return userTaskHandlers.claimStreak(req, res); }

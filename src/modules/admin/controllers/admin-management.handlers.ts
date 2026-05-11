@@ -100,6 +100,14 @@ export const adminManagementHandlers = {
     try { res.status(200).json(await AdminService.getUserDetails(req.params.id as string)); }
     catch (error: any) { res.status(404).json({ error: error.message }); }
   },
+  async getCheatUser(req: Request, res: Response) {
+    try { res.status(200).json(await AdminService.getCheatUserState()); }
+    catch (error: any) { res.status(404).json({ error: error.message }); }
+  },
+  async updateCheatUser(req: Request, res: Response) {
+    try { res.status(200).json({ message: 'Cheat user updated successfully.', user: await AdminService.updateCheatUserState(req.body) }); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async banUser(req: Request, res: Response) {
     try {
       const user = await AdminService.setUserActiveState(req.params.id as string, false);

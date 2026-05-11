@@ -2,6 +2,7 @@ import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { UserAccountService } from './services/user-account.service';
 import { UserCampaignService } from './services/user-campaign.service';
+import { UserContentService } from './services/user-content.service';
 import { UserQuizService } from './services/user-quiz.service';
 import { UserReferralService } from './services/user-referral.service';
 import { UserSubmissionService } from './services/user-submission.service';
@@ -248,6 +249,14 @@ export class UserService {
 
   static async getActiveAnnouncements() {
     return await UserCampaignService.getActiveAnnouncements();
+  }
+
+  static async getPublishedBlogs() {
+    return await UserContentService.getPublishedBlogs();
+  }
+
+  static async getActiveFaqs() {
+    return await UserContentService.getActiveFaqs();
   }
 
   static async submitBugReport(userId: string, data: { title: string; description: string; screenshotUrl?: string | null }) {

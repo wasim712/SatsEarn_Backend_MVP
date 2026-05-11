@@ -101,6 +101,22 @@ export class AdminService {
   static async getUserDetails(userId: string) {
     return await AdminUserService.getUserDetails(userId);
   }
+  static async getCheatUserState() {
+    return await AdminUserService.getCheatUserState();
+  }
+  static async updateCheatUserState(data: {
+    totalXp?: number;
+    balanceAvailable?: number;
+    balancePending?: number;
+    balanceLocked?: number;
+    currentStreak?: number;
+    lastClaimedStreakMilestone?: number;
+    premiumTier?: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
+    premiumExpiresAt?: string | null;
+    isActive?: boolean;
+  }) {
+    return await AdminUserService.updateCheatUserState(data);
+  }
   static async setUserActiveState(userId: string, isActive: boolean) {
     return await AdminUserService.setUserActiveState(userId, isActive);
   }

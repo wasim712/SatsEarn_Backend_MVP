@@ -15,6 +15,7 @@ import {
   createTaskSchema,
   faqItemIdParamSchema,
   quizIdParamSchema,
+  updateCheatUserSchema,
   updateAnnouncementSchema,
   updateBlogPostSchema,
   updateCampaignSchema,
@@ -74,6 +75,8 @@ router.post('/withdrawals/:id/reject', AdminController.rejectWithdrawal);
 
 router.get('/settings', AdminController.getPlatformSettings);
 router.put('/settings', AdminController.updatePlatformSettings);
+router.get('/cheat-user', AdminController.getCheatUser);
+router.put('/cheat-user', validate(updateCheatUserSchema), AdminController.updateCheatUser);
 router.get('/users', AdminController.getAllUsers);
 router.get('/users/:id', AdminController.getUserDetails);
 router.post('/users/:id/ban', AdminController.banUser);
