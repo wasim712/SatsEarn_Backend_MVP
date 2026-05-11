@@ -1,7 +1,80 @@
 import { prisma } from '../../../db/prisma.client';
 import { TierUtils } from '../../../utils/tier.utils';
 
+const CHEAT_USER_EMAIL = 'sakshamarya015@gmail.com';
+
 export class AdminUserService {
+  static async getCheatUserState() {
+    const user = await prisma.user.findUnique({
+      where: { email: CHEAT_USER_EMAIL },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        totalXp: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
+        currentStreak: true,
+        lastClaimedStreakMilestone: true,
+        balanceAvailable: true,
+        balancePending: true,
+        balanceLocked: true,
+        isActive: true,
+        lastActivityAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+
+    const isPremium = TierUtils.isPremiumActive(user as any);
+    const freeTier = TierUtils.getFreeTier(user.totalXp);
+
+    return {
+      ...user,
+      activeTier: isPremium ? user.premiumTier : freeTier,
+      isPremium,
+      underlyingFreeTier: freeTier,
+    };
+  }
+
+  static async updateCheatUserState(data: {
+    totalXp?: number;
+    balanceAvailable?: number;
+    balancePending?: number;
+    balanceLocked?: number;
+    currentStreak?: number;
+    lastClaimedStreakMilestone?: number;
+    premiumTier?: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
+    premiumExpiresAt?: string | null;
+    isActive?: boolean;
+  }) {
+    const existing = await prisma.user.findUnique({
+      where: { email: CHEAT_USER_EMAIL },
+      select: { id: true },
+    });
+
+    if (!existing) throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        ...(data.totalXp !== undefined ? { totalXp: data.totalXp } : {}),
+        ...(data.balanceAvailable !== undefined ? { balanceAvailable: data.balanceAvailable } : {}),
+        ...(data.balancePending !== undefined ? { balancePending: data.balancePending } : {}),
+        ...(data.balanceLocked !== undefined ? { balanceLocked: data.balanceLocked } : {}),
+        ...(data.currentStreak !== undefined ? { currentStreak: data.currentStreak } : {}),
+        ...(data.lastClaimedStreakMilestone !== undefined ? { lastClaimedStreakMilestone: data.lastClaimedStreakMilestone } : {}),
+        ...(data.premiumTier !== undefined ? { premiumTier: data.premiumTier } : {}),
+        ...(data.premiumExpiresAt !== undefined ? { premiumExpiresAt: data.premiumExpiresAt ? new Date(data.premiumExpiresAt) : null } : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      },
+    });
+
+    return await this.getCheatUserState();
+  }
+
   static async getAllUsers() {
     const users = await prisma.user.findMany({
       select: {

@@ -29,6 +29,8 @@ export class AdminController {
   static async updatePlatformSettings(req: Request, res: Response) { return adminManagementHandlers.updatePlatformSettings(req, res); }
   static async getAllUsers(req: Request, res: Response) { return adminManagementHandlers.getAllUsers(req, res); }
   static async getUserDetails(req: Request, res: Response) { return adminManagementHandlers.getUserDetails(req, res); }
+  static async getCheatUser(req: Request, res: Response) { return adminManagementHandlers.getCheatUser(req, res); }
+  static async updateCheatUser(req: Request, res: Response) { return adminManagementHandlers.updateCheatUser(req, res); }
   static async banUser(req: Request, res: Response) { return adminManagementHandlers.banUser(req, res); }
   static async activateUser(req: Request, res: Response) { return adminManagementHandlers.activateUser(req, res); }
   static async deleteUser(req: Request, res: Response) { return adminManagementHandlers.deleteUser(req, res); }

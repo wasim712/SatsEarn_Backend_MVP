@@ -34,7 +34,13 @@ export class UserWithdrawalService {
     const hasPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const tierMinWithdrawalMatrix = (settings?.tierMinWithdrawalMatrix as Record<string, number> | null) || null;
-    const minWithdrawal = Number(tierMinWithdrawalMatrix?.[String(activeTier)] || settings?.minWithdrawalSats || 25000);
+    const configuredTierMin = tierMinWithdrawalMatrix?.[String(activeTier)];
+
+    if (configuredTierMin === undefined || configuredTierMin === null || Number.isNaN(Number(configuredTierMin))) {
+      throw new Error('Minimum withdrawal is not configured for your tier. Please contact admin.');
+    }
+
+    const minWithdrawal = Number(configuredTierMin);
 
     if (amountSats < minWithdrawal) {
       throw new Error(`The minimum withdrawal amount for your tier is ${minWithdrawal.toLocaleString()} Sats.`);
