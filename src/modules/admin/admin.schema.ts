@@ -1,4 +1,4 @@
-import { CampaignDevice, FreeTier, TaskCategory } from '@prisma/client';
+import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -75,6 +75,7 @@ export const updateCampaignSchema = z.object({
 
 
 const ProofTypeEnum = z.enum(["SCREENSHOT", "URL", "TEXT_RESPONSE", "API_VERIFIED"]);
+const PremiumTierEnum = z.nativeEnum(PremiumTier);
 
 export const createTaskSchema = z.object({
   body: z.object({
@@ -220,6 +221,20 @@ export const updateDailyQuizSchema = z.object({
     title: z.string().min(3).optional(),
     rewardSats: z.number().int().positive().optional(),
     xpReward: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+  }).strict(),
+});
+
+export const updateCheatUserSchema = z.object({
+  body: z.object({
+    totalXp: z.number().int().min(0).optional(),
+    balanceAvailable: z.number().int().min(0).optional(),
+    balancePending: z.number().int().min(0).optional(),
+    balanceLocked: z.number().int().min(0).optional(),
+    currentStreak: z.number().int().min(0).optional(),
+    lastClaimedStreakMilestone: z.number().int().min(0).optional(),
+    premiumTier: PremiumTierEnum.nullable().optional(),
+    premiumExpiresAt: z.string().datetime().nullable().optional(),
     isActive: z.boolean().optional(),
   }).strict(),
 });
