@@ -1,4 +1,4 @@
-const STREAK_MILESTONES: Record<number, number> = {
+export const STREAK_MILESTONES: Record<number, number> = {
   7: 70,
   21: 210,
   60: 600,
@@ -6,6 +6,12 @@ const STREAK_MILESTONES: Record<number, number> = {
   180: 1800,
   365: 3650,
 };
+
+export function getStreakMilestones() {
+  return Object.entries(STREAK_MILESTONES)
+    .map(([days, rewardSats]) => ({ days: Number(days), rewardSats }))
+    .sort((a, b) => a.days - b.days);
+}
 
 export function isDoubleRewardActive(startAt?: Date | null, endAt?: Date | null, now = new Date()) {
   if (!startAt || !endAt) return false;

@@ -1,5 +1,6 @@
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
+import { getNextStreakMilestone, getStreakMilestoneReward, getStreakMilestones } from '../../utils/reward.util';
 import { UserAccountService } from './services/user-account.service';
 import { UserCampaignService } from './services/user-campaign.service';
 import { UserContentService } from './services/user-content.service';
@@ -92,6 +93,16 @@ export class UserService {
     if (isMaxLevel) xpDisplay = `${maxXp.toLocaleString()} XP (MAX)`;
     else xpDisplay = `${user.totalXp.toLocaleString()} / ${nextLevelTotalXp.toLocaleString()} XP`;
 
+    const streakMilestones = getStreakMilestones();
+    const lastClaimedStreakMilestone = user.lastClaimedStreakMilestone || 0;
+    const nextStreakMilestone = getNextStreakMilestone(lastClaimedStreakMilestone);
+    const nextStreakRewardSats = nextStreakMilestone ? getStreakMilestoneReward(nextStreakMilestone) : 0;
+    const claimedMilestones = streakMilestones.filter((milestone) => milestone.days <= lastClaimedStreakMilestone);
+    const progressPercent = nextStreakMilestone
+      ? Math.min((Math.max(user.currentStreak, 0) / nextStreakMilestone) * 100, 100)
+      : 100;
+    const daysRemaining = nextStreakMilestone ? Math.max(nextStreakMilestone - user.currentStreak, 0) : 0;
+
     return {
       balances: {
         available: user.balanceAvailable,
@@ -107,6 +118,24 @@ export class UserService {
         isPremium,
         premiumExpiresAt: user.premiumExpiresAt,
         currentStreak: user.currentStreak,
+        lastClaimedStreakMilestone,
+        streak: {
+          currentStreak: user.currentStreak,
+          lastClaimedMilestone: lastClaimedStreakMilestone,
+          nextMilestone: nextStreakMilestone,
+          nextRewardSats: nextStreakRewardSats,
+          daysRemaining,
+          progressPercent,
+          totalMilestones: streakMilestones.length,
+          claimedMilestonesCount: claimedMilestones.length,
+          milestones: streakMilestones.map((milestone) => ({
+            days: milestone.days,
+            rewardSats: milestone.rewardSats,
+            claimed: milestone.days <= lastClaimedStreakMilestone,
+            reachedInCurrentRun: milestone.days > lastClaimedStreakMilestone && user.currentStreak >= milestone.days,
+            isNext: nextStreakMilestone === milestone.days,
+          })),
+        },
         xpDisplay,
         progressPercent: isMaxLevel ? 100 : currentLevelProgressPercent,
         tasksCompleted: user._count.submissions,
