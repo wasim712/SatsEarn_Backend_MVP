@@ -13,7 +13,7 @@ import userRoutes from './modules/user/user.route';
 const app = express();
 
 app.use(helmet());
-app.set('trust proxy', true);
+// app.set('trust proxy', true);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,

@@ -5,6 +5,7 @@ import { UserAccountService } from './services/user-account.service';
 import { UserCampaignService } from './services/user-campaign.service';
 import { UserContentService } from './services/user-content.service';
 import { UserQuizService } from './services/user-quiz.service';
+import { UserLeaderboardService } from './services/user-leaderboard.service';
 import { UserReferralService } from './services/user-referral.service';
 import { UserSubmissionService } from './services/user-submission.service';
 import { UserWithdrawalService } from './services/user-withdrawal.service';
@@ -170,6 +171,10 @@ export class UserService {
         }),
       ),
     };
+  }
+
+  static async getLeaderboard() {
+    return await UserLeaderboardService.getLeaderboard();
   }
 
   static async getUserProfile(userId: string) {

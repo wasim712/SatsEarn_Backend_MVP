@@ -1,10 +1,15 @@
 import { prisma } from '../../../db/prisma.client';
+import { TierUtils } from '../../../utils/tier.utils';
 
 export class UserReferralService {
   static async getReferralDashboard(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
+        transactions: {
+          where: { type: 'REFERRAL_BONUS' },
+          select: { amountSats: true },
+        },
         referrals: {
           select: {
             id: true,
@@ -26,6 +31,13 @@ export class UserReferralService {
     });
 
     if (!user) throw new Error('User not found');
+
+    const activeTier = TierUtils.isPremiumActive(user as any)
+      ? user.premiumTier
+      : TierUtils.getFreeTier(user.totalXp);
+    const isFreeTier = !TierUtils.isPremiumActive(user as any);
+    const freeTierCap = isFreeTier ? TierUtils.getFreeTierReferralCap(activeTier as any) : null;
+    const lifetimeReferralEarnings = user.transactions.reduce((sum, tx) => sum + tx.amountSats, 0);
 
     let activeCount = 0;
     let inactiveCount = 0;
@@ -55,6 +67,9 @@ export class UserReferralService {
       totalReferrals: user.referrals.length,
       activeReferrals: activeCount,
       inactiveReferrals: inactiveCount,
+      lifetimeEarningsSats: lifetimeReferralEarnings,
+      activeTier,
+      referralRewardCapSats: freeTierCap?.maxSats ?? null,
       referrals: referralDetails,
     };
   }
@@ -82,4 +97,5 @@ export class UserReferralService {
       status: submission.status,
     }));
   }
+  
 }

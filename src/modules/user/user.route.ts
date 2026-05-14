@@ -24,6 +24,7 @@ router.use(requireAuth);
 router.get('/profile', UserController.getProfile);
 router.patch('/profile', validate(updateProfileSchema), UserController.updateProfile);
 router.get('/dashboard', UserController.getDashboard);
+router.get('/leaderboard', UserController.getLeaderboard);
 router.post('/change-password', UserController.changePassword);
 router.delete('/account', UserController.deleteAccount);
 
