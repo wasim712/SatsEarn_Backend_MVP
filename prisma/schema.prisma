@@ -403,6 +403,7 @@ model QuizQuestion {
   dailyQuiz     DailyQuiz @relation(fields: [dailyQuizId], references: [id], onDelete: Cascade)
   
   questionText  String   @db.Text
+  explanation   String?  @db.Text
   options       String[] // ["21 Million", "Unlimited", "100 Million"]
   correctAnswer String   
   
@@ -423,6 +424,8 @@ model QuizAttempt {
   
   dailyQuizId String
   dailyQuiz   DailyQuiz @relation(fields: [dailyQuizId], references: [id])
+
+  answers     Json?
   
   score       Int
   passed      Boolean  // True if they got 100%
