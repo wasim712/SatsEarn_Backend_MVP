@@ -1,11 +1,11 @@
 import { User, FreeTier } from '@prisma/client';
 
-const FREE_TIER_REFERRAL_CAPS: Record<FreeTier, { maxSats: number }> = {
-  BASIC: { maxSats: 2000 },
-  COPPER: { maxSats: 4000 },
-  BRONZE: { maxSats: 6000 },
-  SILVER: { maxSats: 8000 },
-  GOLD: { maxSats: 10000 },
+const FREE_TIER_REFERRAL_CAPS: Record<FreeTier, { maxUsers: number; maxSats: number }> = {
+  BASIC: { maxUsers: 20, maxSats: 2000 },
+  COPPER: { maxUsers: 40, maxSats: 4000 },
+  BRONZE: { maxUsers: 60, maxSats: 6000 },
+  SILVER: { maxUsers: 80, maxSats: 8000 },
+  GOLD: { maxUsers: 100, maxSats: 10000 },
 };
 
 export class TierUtils {

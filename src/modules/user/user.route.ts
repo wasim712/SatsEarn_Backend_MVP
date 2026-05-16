@@ -2,6 +2,7 @@ import multer from 'multer';
 import { Router } from 'express';
 import { prisma } from '../../db/prisma.client';
 import { requireAuth } from '../../middlewares/auth.middleware';
+import { decryptObfuscatedMultipart } from '../../middlewares/obfuscation.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { UserController } from './user.controller';
@@ -35,7 +36,7 @@ router.get('/settings', async (_req, res) => {
 router.get('/campaigns', UserController.getCampaigns);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
 
-router.post('/tasks/:taskId/submit', upload.single('proofImage'), UserController.submitTaskProof);
+router.post('/tasks/:taskId/submit', upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitTaskProof);
 router.post('/tasks/:taskId/quiz', validate(submitQuizSchema), UserController.submitQuiz);
 router.post('/tasks/:taskId/start', UserController.startTask);
 
@@ -45,7 +46,7 @@ router.get('/submissions', UserController.getSubmissionHistory);
 router.get('/bug-reports', UserController.getMyBugReports);
 router.get('/blogs', UserController.getPublishedBlogs);
 router.get('/faqs', UserController.getActiveFaqs);
-router.post('/bug-reports', upload.single('screenshot'), validate(submitBugReportSchema), UserController.submitBugReport);
+router.post('/bug-reports', upload.single('screenshot'), decryptObfuscatedMultipart, validate(submitBugReportSchema), UserController.submitBugReport);
 
 router.post('/streak/claim', UserController.claimStreak);
 router.get('/quiz/today', UserController.getTodayQuiz);
