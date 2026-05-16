@@ -29,6 +29,11 @@ const envSchema = z.object({
     .min(16, { message: "FIELD_ENCRYPTION_KEY must be at least 16 characters long for security" })
     .optional(),
 
+  TRANSPORT_OBFUSCATION_KEY: z
+    .string()
+    .min(16, { message: "TRANSPORT_OBFUSCATION_KEY must be at least 16 characters long for request obfuscation" })
+    .optional(),
+
   // --- EXTERNAL SERVICES ---
   RESEND_API_KEY: z
     .string()

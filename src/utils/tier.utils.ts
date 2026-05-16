@@ -1,5 +1,13 @@
 import { User, FreeTier } from '@prisma/client';
 
+const FREE_TIER_REFERRAL_CAPS: Record<FreeTier, { maxUsers: number; maxSats: number }> = {
+  BASIC: { maxUsers: 20, maxSats: 2000 },
+  COPPER: { maxUsers: 40, maxSats: 4000 },
+  BRONZE: { maxUsers: 60, maxSats: 6000 },
+  SILVER: { maxUsers: 80, maxSats: 8000 },
+  GOLD: { maxUsers: 100, maxSats: 10000 },
+};
+
 export class TierUtils {
   // 1. Calculate Free Tier from XP
   static getFreeTier(totalXp: number): FreeTier {
@@ -16,18 +24,7 @@ export class TierUtils {
     return new Date() < user.premiumExpiresAt;
   }
 
-  // 3. Get the Referral Commission % based on their Tier
-  static getReferralCommission(user: User, defaultPercent: number): number {
-    if (!this.isPremiumActive(user)) return defaultPercent; // e.g., 5%
-    
-    // Premium specific rates
-    switch (user.premiumTier) {
-      case 'FOUNDER': return 30;
-      case 'ELITE': return 25;
-      case 'CROWN': return 20;
-      case 'DIAMOND': return 15;
-      case 'PLATINUM': return 10;
-      default: return defaultPercent;
-    }
+  static getFreeTierReferralCap(tier: FreeTier) {
+    return FREE_TIER_REFERRAL_CAPS[tier];
   }
 }

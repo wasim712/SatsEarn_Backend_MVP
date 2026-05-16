@@ -187,6 +187,7 @@ export const faqItemIdParamSchema = z.object({
 // --- DAILY QUIZ ---
 const quizQuestionSchema = z.object({
   questionText: z.string().min(5, "Question must be at least 5 characters"),
+  explanation: z.string().trim().optional().or(z.literal('')),
   options: z.array(z.string()).min(2, "Must provide at least 2 options").max(5, "Max 5 options allowed"),
   correctAnswer: z.string(),
   order: z.number().int().min(1)

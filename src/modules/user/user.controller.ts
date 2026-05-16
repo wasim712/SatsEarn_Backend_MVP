@@ -4,6 +4,7 @@ import { userTaskHandlers } from './controllers/user-task.handlers';
 
 export class UserController {
   static async getDashboard(req: Request, res: Response) { return userAccountHandlers.getDashboard(req, res); }
+  static async getLeaderboard(req: Request, res: Response) { return userAccountHandlers.getLeaderboard(req, res); }
   static async getProfile(req: Request, res: Response) { return userAccountHandlers.getProfile(req, res); }
   static async updateProfile(req: Request, res: Response) { return userAccountHandlers.updateProfile(req, res); }
   static async changePassword(req: Request, res: Response) { return userAccountHandlers.changePassword(req, res); }

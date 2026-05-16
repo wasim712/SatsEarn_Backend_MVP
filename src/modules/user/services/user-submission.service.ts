@@ -25,6 +25,7 @@ export class UserSubmissionService {
     const settings = (await prisma.platformSettings.findFirst()) || {
       referralBonusPercent: 5,
       securityLockDays: 15,
+      tierReferralMatrix: null,
     };
 
     const user = await prisma.user.findUnique({
@@ -169,11 +170,40 @@ export class UserSubmissionService {
             const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
 
             if (referrer) {
-              const commissionPercent = TierUtils.getReferralCommission(
-                referrer as any,
-                settings.referralBonusPercent,
+              const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
+              const referrerActiveTier = referrerHasPremium
+                ? referrer.premiumTier
+                : TierUtils.getFreeTier(referrer.totalXp);
+              const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
+              const configuredCommission = referrerActiveTier
+                ? tierReferralMatrix?.[String(referrerActiveTier)]
+                : undefined;
+              const commissionPercent = Number(
+                configuredCommission ?? settings.referralBonusPercent ?? 0,
               );
-              const referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+              let referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+
+              if (!referrerHasPremium) {
+                const freeTier = TierUtils.getFreeTier(referrer.totalXp);
+                const cap = TierUtils.getFreeTierReferralCap(freeTier);
+
+                const referralLedgers = await tx.ledger.findMany({
+                  where: {
+                    userId: referrer.id,
+                    type: 'REFERRAL_BONUS',
+                  },
+                  select: { amountSats: true },
+                });
+
+                const totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
+                const remainingSats = cap.maxSats - totalReferralSatsEarned;
+
+                if (remainingSats <= 0) {
+                  referralBonus = 0;
+                } else {
+                  referralBonus = Math.max(0, Math.min(referralBonus, remainingSats));
+                }
+              }
 
               if (referralBonus > 0) {
                 await tx.user.update({
@@ -230,6 +260,8 @@ export class UserSubmissionService {
 
     if (submission) {
       try {
+        const referredUserName = user.fullName || 'your referral';
+
         if (submission.status === SubmissionStatus.REJECTED) {
           await NotificationService.notifyUser(
             userId,
@@ -258,6 +290,74 @@ export class UserSubmissionService {
             'SYSTEM_ALERT',
             submission.id,
           );
+        }
+
+        if (submission.status !== SubmissionStatus.REJECTED && user.referredById) {
+          const referrer = await prisma.user.findUnique({ where: { id: user.referredById } });
+
+          if (referrer) {
+            const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
+            const referrerActiveTier = referrerHasPremium
+              ? referrer.premiumTier
+              : TierUtils.getFreeTier(referrer.totalXp);
+            const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
+            const configuredCommission = referrerActiveTier
+              ? tierReferralMatrix?.[String(referrerActiveTier)]
+              : undefined;
+            const commissionPercent = Number(configuredCommission ?? settings.referralBonusPercent ?? 0);
+            const intendedReferralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+
+            let totalReferralSatsEarned = 0;
+            let cap = null as ReturnType<typeof TierUtils.getFreeTierReferralCap> | null;
+
+            if (!referrerHasPremium) {
+              const freeTier = TierUtils.getFreeTier(referrer.totalXp);
+              cap = TierUtils.getFreeTierReferralCap(freeTier);
+              const referralLedgers = await prisma.ledger.findMany({
+                where: {
+                  userId: referrer.id,
+                  type: 'REFERRAL_BONUS',
+                },
+                select: { amountSats: true },
+              });
+              totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
+            }
+
+            const actualReferralLedger = await prisma.ledger.findFirst({
+              where: {
+                userId: referrer.id,
+                type: 'REFERRAL_BONUS',
+                referenceId: submission.id,
+              },
+              select: { amountSats: true },
+            });
+
+            const actualReferralBonus = actualReferralLedger?.amountSats || 0;
+
+            if (actualReferralBonus > 0) {
+              const cappedMessage = !referrerHasPremium && actualReferralBonus < intendedReferralBonus
+                ? ` Your free-tier cap reduced this reward from ${intendedReferralBonus} sats to ${actualReferralBonus} sats.`
+                : '';
+
+              await NotificationService.notifyUser(
+                referrer.id,
+                'Referral Reward Added',
+                `${referredUserName} completed a task and you earned ${actualReferralBonus} sats as referral reward.${cappedMessage}`,
+                'SYSTEM_ALERT',
+                submission.id,
+              );
+            } else if (!referrerHasPremium && cap) {
+              const remainingSats = Math.max(cap.maxSats - totalReferralSatsEarned, 0);
+
+              await NotificationService.notifyUser(
+                referrer.id,
+                'Referral Reward Cap Reached',
+                `${referredUserName} completed a task, but no referral sats were added because your free-tier referral cap is exhausted. Remaining capacity: ${remainingSats} sats.`,
+                'SYSTEM_ALERT',
+                submission.id,
+              );
+            }
+          }
         }
 
         if (submission.status === SubmissionStatus.MANUAL_REVIEW) {

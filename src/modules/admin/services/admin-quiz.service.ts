@@ -1,5 +1,13 @@
 import { prisma } from '../../../db/prisma.client';
 
+function normalizeQuizDateInput(dateInput: string) {
+  const [year, month, day] = dateInput.slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) {
+    throw new Error('Invalid quiz date format.');
+  }
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
 export class AdminQuizService {
   static async createDailyQuiz(data: {
     date: string;
@@ -8,12 +16,13 @@ export class AdminQuizService {
     xpReward: number;
     questions: Array<{
       questionText: string;
+      explanation?: string;
       options: string[];
       correctAnswer: string;
       order: number;
     }>;
   }) {
-    const targetDate = new Date(data.date);
+    const targetDate = normalizeQuizDateInput(data.date);
     const existingQuiz = await prisma.dailyQuiz.findUnique({ where: { date: targetDate } });
 
     if (existingQuiz) {
@@ -29,6 +38,7 @@ export class AdminQuizService {
         questions: {
           create: data.questions.map((question) => ({
             questionText: question.questionText,
+            explanation: question.explanation?.trim() || null,
             options: question.options,
             correctAnswer: question.correctAnswer,
             order: question.order,

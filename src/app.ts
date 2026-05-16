@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { decryptObfuscatedJson, encryptObfuscatedResponse } from './middlewares/obfuscation.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { routeLogger } from './middlewares/logger.middleware';
 import { limiter } from './middlewares/rate-limit';
@@ -13,7 +14,7 @@ import userRoutes from './modules/user/user.route';
 const app = express();
 
 app.use(helmet());
-app.set('trust proxy', true);
+// app.set('trust proxy', true);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
@@ -31,10 +32,13 @@ app.use(
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-obfuscated', 'x-obfuscated-response', 'x-obfuscated-multipart'],
   }),
 );
 
 app.use(express.json());
+app.use(decryptObfuscatedJson);
+app.use(encryptObfuscatedResponse);
 app.use(routeLogger);
 
 app.use('/api/auth', limiter);

@@ -2,6 +2,7 @@ import multer from 'multer';
 import { Router } from 'express';
 import { requireAdmin } from '../../middlewares/admin.middleware';
 import { requireAuth } from '../../middlewares/auth.middleware';
+import { decryptObfuscatedMultipart } from '../../middlewares/obfuscation.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { AdminController } from './admin.controller';
@@ -35,7 +36,7 @@ router.use(requireAuth, requireAdmin);
 router.get('/metrics', AdminController.getDashboardMetrics);
 
 router.get('/campaigns/:id/analytics', AdminController.getCampaignAnalytics);
-router.post('/campaigns/upload-cover', upload.single('coverImage'), AdminController.uploadCampaignCover);
+router.post('/campaigns/upload-cover', upload.single('coverImage'), decryptObfuscatedMultipart, AdminController.uploadCampaignCover);
 router.post('/campaigns', validate(createCampaignSchema), AdminController.createCampaign);
 router.get('/campaigns', AdminController.getAllCampaigns);
 router.patch('/campaigns/:id', validate(updateCampaignSchema), AdminController.updateCampaign);

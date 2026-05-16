@@ -21,6 +21,19 @@ export class AdminCampaignService {
         doubleRewardsStartAt: data.doubleRewardsStartAt ? new Date(data.doubleRewardsStartAt) : null,
         doubleRewardsEndAt: data.doubleRewardsEndAt ? new Date(data.doubleRewardsEndAt) : null,
         tierRewardMatrix: data.tierRewardMatrix,
+        tasks: {
+          create: {
+            title: data.title,
+            description: data.description,
+            targetUrl: data.targetUrl || null,
+            proofType: 'SCREENSHOT',
+            baseRewardSatsOverride: data.baseRewardSats || null,
+            xpRewardOverride: data.xpReward ?? 0,
+            requirements: {
+              requiredPlatform: data.requiredPlatform || 'NONE',
+            },
+          },
+        },
       },
       include: {
         tasks: true,

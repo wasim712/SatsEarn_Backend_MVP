@@ -6,6 +6,10 @@ export const userAccountHandlers = {
     try { res.status(200).json(await UserService.getUserDashboard(req.user!.id)); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
   },
+  async getLeaderboard(_req: Request, res: Response) {
+    try { res.status(200).json(await UserService.getLeaderboard()); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
   async getProfile(req: Request, res: Response) {
     try { res.status(200).json(await UserService.getUserProfile(req.user!.id)); }
     catch (error: any) { res.status(404).json({ error: error.message }); }

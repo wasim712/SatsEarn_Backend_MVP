@@ -78,12 +78,20 @@ export class UserQuizService {
     };
   }
 
-  static async getTodayQuiz(_userId: string) {
+  static async getTodayQuiz(userId: string) {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     const quiz = await prisma.dailyQuiz.findFirst({
-      where: { date: today, isActive: true },
+      where: {
+        isActive: true,
+        date: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
       include: { questions: { orderBy: { order: 'asc' } } },
     });
 
@@ -94,16 +102,74 @@ export class UserQuizService {
     const safeQuestions = quiz.questions.map((question) => ({
       id: question.id,
       questionText: question.questionText,
+      explanation: question.explanation,
       options: question.options,
       order: question.order,
     }));
 
-    return {
+    const existingAttempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
+    });
+
+    const quizPayload = {
       id: quiz.id,
       title: quiz.title,
+      description: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
       rewardSats: quiz.rewardSats,
       xpReward: quiz.xpReward,
       questions: safeQuestions,
+    };
+
+    if (existingAttempt) {
+      const totalQuestions = quiz.questions.length;
+      const exactEarnedSats = totalQuestions > 0 ? (quiz.rewardSats / totalQuestions) * existingAttempt.score : 0;
+      const exactEarnedXp = totalQuestions > 0 ? (quiz.xpReward / totalQuestions) * existingAttempt.score : 0;
+      const savedAnswers = Array.isArray(existingAttempt.answers)
+        ? existingAttempt.answers as Array<{ questionId: string; answer: string }>
+        : [];
+      const savedAnswerMap = new Map(savedAnswers.map((item) => [item.questionId, item.answer]));
+      const review = quiz.questions
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((question) => {
+          const selectedAnswer = savedAnswerMap.get(question.id) || '';
+          const correctAnswer = question.correctAnswer;
+          return {
+            questionId: question.id,
+            questionText: question.questionText,
+            explanation: question.explanation,
+            selectedAnswer,
+            correctAnswer,
+            isCorrect: selectedAnswer === correctAnswer,
+            options: question.options,
+            order: question.order,
+          };
+        });
+
+      return {
+        status: 'submitted' as const,
+        quiz: quizPayload,
+        result: {
+          message: existingAttempt.passed
+            ? `Perfect score! You earned the full ${Math.floor(exactEarnedSats)} Sats.`
+            : `Good job! You got ${existingAttempt.score}/${totalQuestions} correct and earned a partial reward of ${Math.floor(exactEarnedSats)} Sats.`,
+          passed: existingAttempt.passed,
+          score: existingAttempt.score,
+          rewardEarned: Math.floor(exactEarnedSats),
+          xpEarned: Math.floor(exactEarnedXp),
+          streakBonusSats: 0,
+          totalQuestions,
+          quizTitle: quiz.title,
+          quizDescription: quizPayload.description,
+          submittedAt: existingAttempt.createdAt,
+          review,
+        },
+      };
+    }
+
+    return {
+      status: 'available' as const,
+      quiz: quizPayload,
     };
   }
 
@@ -113,9 +179,17 @@ export class UserQuizService {
   ) {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     const quiz = await prisma.dailyQuiz.findFirst({
-      where: { date: today, isActive: true },
+      where: {
+        isActive: true,
+        date: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
       include: { questions: true },
     });
 
@@ -143,6 +217,7 @@ export class UserQuizService {
     let score = 0;
     const totalQuestions = quiz.questions.length;
     const answerKey = new Map(quiz.questions.map((question) => [question.id, question.correctAnswer]));
+    const submittedAnswerMap = new Map(userAnswers.map((submission) => [submission.questionId, submission.answer]));
 
     for (const submission of userAnswers) {
       const correctAnswer = answerKey.get(submission.questionId);
@@ -173,10 +248,28 @@ export class UserQuizService {
         data: {
           userId,
           dailyQuizId: quiz.id,
+          answers: userAnswers,
           score,
           passed,
         },
       });
+
+      const review = quiz.questions
+        .sort((a, b) => a.order - b.order)
+        .map((question) => {
+          const selectedAnswer = submittedAnswerMap.get(question.id) || '';
+          const correctAnswer = question.correctAnswer;
+          return {
+            questionId: question.id,
+            questionText: question.questionText,
+            explanation: question.explanation,
+            selectedAnswer,
+            correctAnswer,
+            isCorrect: selectedAnswer === correctAnswer,
+            options: question.options,
+            order: question.order,
+          };
+        });
 
       if (finalRewardSats <= 0 && finalRewardXp <= 0 && streakBonusSats <= 0) {
         await tx.user.update({
@@ -191,9 +284,14 @@ export class UserQuizService {
           message: `Oof! You scored ${score}/${totalQuestions} and earned 0 Sats. Your daily streak activity was still counted.`,
           passed: false,
           score,
+          totalQuestions,
+          quizTitle: quiz.title,
+          quizDescription: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
           rewardEarned: 0,
           xpEarned: 0,
           streakBonusSats: 0,
+          submittedAt: attempt.createdAt,
+          review,
         };
       }
 
@@ -248,9 +346,14 @@ export class UserQuizService {
           : `Good job! You got ${score}/${totalQuestions} correct and earned a partial reward of ${finalRewardSats} Sats.`,
         passed,
         score,
+        totalQuestions,
+        quizTitle: quiz.title,
+        quizDescription: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
         rewardEarned: finalRewardSats,
         xpEarned: finalRewardXp,
         streakBonusSats,
+        submittedAt: attempt.createdAt,
+        review,
       };
     });
   }
