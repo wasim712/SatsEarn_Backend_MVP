@@ -16,6 +16,24 @@ import { NotificationService } from '../../notifications/notification.service';
 import { AiVerificationService } from '../../verification/verification.service';
 
 export class UserSubmissionService {
+  static async getTaskStatus(userId: string, taskId: string) {
+    const submission = await prisma.submission.findUnique({
+      where: { userId_taskId: { userId, taskId } },
+      select: {
+        status: true,
+        submittedAt: true,
+        rejectionReason: true,
+        unlockAt: true,
+      },
+    });
+
+    if (!submission) {
+      return { status: null, submittedAt: null, rejectionReason: null, unlockAt: null };
+    }
+
+    return submission;
+  }
+
   static async submitTask(
     userId: string,
     taskId: string,

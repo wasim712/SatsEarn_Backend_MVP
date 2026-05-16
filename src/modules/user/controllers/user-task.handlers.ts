@@ -40,6 +40,10 @@ export const userTaskHandlers = {
       res.status(200).json({ message, submission: result, proofProvided: screenshotUrl || proofText || 'API Verified' });
     } catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async getTaskStatus(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.getTaskStatus(req.user!.id, req.params.taskId as string)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async getReferralDashboard(req: Request, res: Response) {
     try { res.json(await UserService.getReferralDashboard(req.user!.id)); }
     catch (error: any) { res.status(500).json({ error: error.message }); }

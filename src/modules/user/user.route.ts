@@ -35,6 +35,7 @@ router.get('/settings', async (_req, res) => {
 });
 router.get('/campaigns', UserController.getCampaigns);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
+router.get('/tasks/:taskId/status', UserController.getTaskStatus);
 
 router.post('/tasks/:taskId/submit', upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitTaskProof);
 router.post('/tasks/:taskId/quiz', validate(submitQuizSchema), UserController.submitQuiz);
