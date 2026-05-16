@@ -5,11 +5,27 @@ function isApiRequest(req: Request) {
   return req.path.startsWith('/api/');
 }
 
+function isAuthRequest(req: Request) {
+  return req.path.startsWith('/api/auth/');
+}
+
+function isRawPublicRequest(req: Request) {
+  return req.path.startsWith('/api/public/announcements/active');
+}
+
 function shouldDecryptRequest(req: Request) {
+  if (isAuthRequest(req) || isRawPublicRequest(req)) {
+    return false;
+  }
+
   return isApiRequest(req) && (req.headers['x-obfuscated'] === '1' || req.headers['x-obfuscated-multipart'] === '1');
 }
 
 function shouldEncryptResponse(req: Request) {
+  if (isAuthRequest(req) || isRawPublicRequest(req)) {
+    return false;
+  }
+
   return isApiRequest(req) && (req.headers['x-obfuscated-response'] === '1' || req.headers['x-obfuscated'] === '1' || req.headers['x-obfuscated-multipart'] === '1');
 }
 

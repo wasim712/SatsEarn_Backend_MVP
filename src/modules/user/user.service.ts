@@ -12,6 +12,10 @@ import { UserWithdrawalService } from './services/user-withdrawal.service';
 import { UserBugReportService } from './services/user-bug-report.service';
 
 export class UserService {
+  static async getTaskStatus(userId: string, taskId: string) {
+    return await UserSubmissionService.getTaskStatus(userId, taskId);
+  }
+
   static async getProfile(userId: string) {
     return await UserAccountService.getProfile(userId);
   }

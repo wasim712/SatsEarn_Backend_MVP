@@ -3,12 +3,14 @@ import { AuthService } from './auth.service';
 
 const isDatabaseConnectionError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : '';
   return (
-    message.includes('Server has closed the connection') ||
+    name === 'PrismaClientInitializationError' ||
     message.includes("Can't reach database server") ||
-    message.includes('ETIMEDOUT') ||
-    message.includes('ECONNRESET') ||
-    message.includes('ECONNREFUSED')
+    message.includes('P1001') ||
+    message.includes('P1002') ||
+    message.includes('Connection terminated unexpectedly') ||
+    message.includes('Timed out fetching a new connection from the pool')
   );
 };
 
