@@ -12,6 +12,17 @@ import { UserWithdrawalService } from './services/user-withdrawal.service';
 import { UserBugReportService } from './services/user-bug-report.service';
 
 export class UserService {
+  static async registerPremiumInterest(userId: string, data: {
+    plan: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER';
+    intent: 'NOTIFY_ME' | 'UPGRADE';
+    source?: string;
+  }) {
+    return await UserAccountService.registerPremiumInterest(userId, data);
+  }
+  static async getPremiumRequests(userId: string) {
+    return await UserAccountService.getPremiumRequests(userId);
+  }
+
   static async getTaskStatus(userId: string, taskId: string) {
     return await UserSubmissionService.getTaskStatus(userId, taskId);
   }

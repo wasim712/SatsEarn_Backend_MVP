@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs';
+import { PremiumRequestStatus } from '@prisma/client';
 import { prisma } from '../../../db/prisma.client';
 import { CryptoUtil } from '../../../utils/crypto.util';
-import { UserProfileUpdateInput } from '../user.types';
+import { TierUtils } from '../../../utils/tier.utils';
+import { NotificationService } from '../../notifications/notification.service';
+import { PremiumInterestInput, UserProfileUpdateInput } from '../user.types';
 
 function decryptProfileFields<T extends Record<string, any>>(user: T | null): T | null {
   if (!user) {
@@ -45,6 +48,9 @@ export class UserAccountService {
         discordHandle: true,
         referralCode: true,
         createdAt: true,
+        totalXp: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
       },
     });
 
@@ -52,7 +58,97 @@ export class UserAccountService {
       throw new Error('User not found');
     }
 
-    return decryptProfileFields(user);
+    const decrypted = decryptProfileFields(user);
+    const isPremium = TierUtils.isPremiumActive(user as any);
+    const activeTier = isPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+
+    return {
+      ...decrypted,
+      activeTier,
+      isPremium,
+      premiumTier: user.premiumTier,
+      premiumExpiresAt: user.premiumExpiresAt,
+    };
+  }
+
+  static async registerPremiumInterest(userId: string, data: PremiumInterestInput) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
+        totalXp: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const activeTier = TierUtils.isPremiumActive(user as any)
+      ? user.premiumTier || 'UNKNOWN'
+      : TierUtils.getFreeTier(user.totalXp);
+
+    const existingOpenRequest = await prisma.premiumRequest.findFirst({
+      where: {
+        userId,
+        plan: data.plan,
+        intent: data.intent,
+        status: {
+          in: [PremiumRequestStatus.OPEN, PremiumRequestStatus.CONTACTED],
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existingOpenRequest) {
+      throw new Error(`You have already sent a ${data.intent === 'UPGRADE' ? 'premium upgrade' : 'notify me'} request for ${data.plan}.`);
+    }
+
+    const request = await prisma.premiumRequest.create({
+      data: {
+        userId: user.id,
+        plan: data.plan,
+        intent: data.intent,
+        source: data.source,
+        userEmail: user.email,
+        userFullName: user.fullName,
+        userActiveTier: String(activeTier),
+      },
+    });
+
+    const actor = user.fullName?.trim() || user.email;
+    const actionLabel = data.intent === 'UPGRADE' ? 'Upgrade' : 'Notify me';
+    const sourceLabel = data.source ? ` via ${data.source}` : '';
+
+    await NotificationService.notifyAdmins(
+      `Premium ${actionLabel} Request`,
+      `${actor} (${user.email}) clicked ${actionLabel} for ${data.plan}.${sourceLabel} Current tier: ${activeTier}.`,
+      'SYSTEM_ALERT',
+      request.id,
+    );
+
+    return {
+      success: true,
+      message: data.intent === 'UPGRADE'
+        ? 'Your upgrade interest has been shared with our admin team. We will reach out to you manually.'
+        : 'You are on the notify list. We will contact you when manual payment is available.',
+    };
+  }
+
+  static async getPremiumRequests(userId: string) {
+    return await prisma.premiumRequest.findMany({
+      where: {
+        userId,
+        status: {
+          in: [PremiumRequestStatus.OPEN, PremiumRequestStatus.CONTACTED],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   static async updateProfile(userId: string, data: UserProfileUpdateInput) {

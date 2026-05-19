@@ -11,3 +11,9 @@ export type TaskProofInput = {
   screenshotUrl?: string;
   proofText?: string;
 };
+
+export type PremiumInterestInput = {
+  plan: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER';
+  intent: 'NOTIFY_ME' | 'UPGRADE';
+  source?: string;
+};

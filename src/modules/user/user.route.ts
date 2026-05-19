@@ -7,6 +7,7 @@ import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { UserController } from './user.controller';
 import {
+  premiumInterestSchema,
   requestWithdrawalSchema,
   submitBugReportSchema,
   submitDailyQuizSchema,
@@ -24,6 +25,8 @@ router.use(requireAuth);
 
 router.get('/profile', UserController.getProfile);
 router.patch('/profile', validate(updateProfileSchema), UserController.updateProfile);
+router.get('/premium-interest', UserController.getPremiumRequests);
+router.post('/premium-interest', validate(premiumInterestSchema), UserController.registerPremiumInterest);
 router.get('/dashboard', UserController.getDashboard);
 router.get('/leaderboard', UserController.getLeaderboard);
 router.post('/change-password', UserController.changePassword);

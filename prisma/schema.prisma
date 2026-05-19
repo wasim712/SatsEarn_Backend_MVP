@@ -104,6 +104,18 @@ enum BugReportStatus {
   REJECTED
 }
 
+enum PremiumRequestIntent {
+  NOTIFY_ME
+  UPGRADE
+}
+
+enum PremiumRequestStatus {
+  OPEN
+  CONTACTED
+  COMPLETED
+  CANCELLED
+}
+
 
 // ==========================================
 // MODELS: The Data Architecture
@@ -165,6 +177,7 @@ id               String   @id @default(uuid())
   quizAttempts     QuizAttempt[]
   notifications    Notification[]
   bugReports       BugReport[]
+  premiumRequests  PremiumRequest[]
   
   isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
@@ -454,6 +467,27 @@ model Notification {
 
   @@index([userId, isRead])
   @@index([forAdmin, isRead])
+}
+
+model PremiumRequest {
+  id              String               @id @default(uuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id])
+  plan            PremiumTier
+  intent          PremiumRequestIntent
+  status          PremiumRequestStatus @default(OPEN)
+  source          String?
+  userEmail       String
+  userFullName    String?
+  userActiveTier  String
+  adminNotes      String?
+  contactedAt     DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([userId, plan, intent, status])
+  @@index([status, createdAt])
 }
 
 model BugReport {

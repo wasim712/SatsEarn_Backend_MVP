@@ -98,6 +98,9 @@ export class AdminService {
   static async getAllUsers() {
     return await AdminUserService.getAllUsers();
   }
+  static async getPremiumRequests() {
+    return await AdminUserService.getPremiumRequests();
+  }
   static async getUserDetails(userId: string) {
     return await AdminUserService.getUserDetails(userId);
   }
@@ -122,6 +125,18 @@ export class AdminService {
   }
   static async deleteUserAccount(userId: string) {
     return await AdminUserService.deleteUserAccount(userId);
+  }
+  static async updateUserPremium(userId: string, data: {
+    premiumTier: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
+    premiumExpiresAt: string | null;
+  }) {
+    return await AdminUserService.updateUserPremium(userId, data);
+  }
+  static async updatePremiumRequest(requestId: string, data: {
+    status: 'OPEN' | 'CONTACTED' | 'COMPLETED' | 'CANCELLED';
+    adminNotes?: string;
+  }) {
+    return await AdminUserService.updatePremiumRequest(requestId, data);
   }
   static async createDailyQuiz(data: {
     date: string;
