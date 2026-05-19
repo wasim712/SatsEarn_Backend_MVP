@@ -4,6 +4,66 @@ import { TierUtils } from '../../../utils/tier.utils';
 const CHEAT_USER_EMAIL = 'sakshamarya015@gmail.com';
 
 export class AdminUserService {
+  static async getPremiumRequests() {
+    return await prisma.premiumRequest.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            totalXp: true,
+            isActive: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  static async updatePremiumRequest(requestId: string, data: {
+    status: 'OPEN' | 'CONTACTED' | 'COMPLETED' | 'CANCELLED';
+    adminNotes?: string;
+  }) {
+    const updateData: {
+      status: 'OPEN' | 'CONTACTED' | 'COMPLETED' | 'CANCELLED';
+      adminNotes?: string;
+      contactedAt?: Date | null;
+      resolvedAt?: Date | null;
+    } = {
+      status: data.status,
+      ...(data.adminNotes !== undefined ? { adminNotes: data.adminNotes } : {}),
+    };
+
+    if (data.status === 'CONTACTED') {
+      updateData.contactedAt = new Date();
+    }
+
+    if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
+      updateData.resolvedAt = new Date();
+    }
+
+    return await prisma.premiumRequest.update({
+      where: { id: requestId },
+      data: updateData,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            totalXp: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+  }
+
   static async getCheatUserState() {
     const user = await prisma.user.findUnique({
       where: { email: CHEAT_USER_EMAIL },
@@ -276,5 +336,27 @@ export class AdminUserService {
         isActive: true,
       },
     });
+  }
+
+  static async updateUserPremium(userId: string, data: {
+    premiumTier: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
+    premiumExpiresAt: string | null;
+  }) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true },
+    });
+
+    if (!user) throw new Error('User not found');
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        premiumTier: data.premiumTier,
+        premiumExpiresAt: data.premiumExpiresAt ? new Date(data.premiumExpiresAt) : null,
+      },
+    });
+
+    return await this.getUserDetails(userId);
   }
 }

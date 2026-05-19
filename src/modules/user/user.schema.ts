@@ -59,3 +59,11 @@ export const submitBugReportSchema = z.object({
     description: z.string().min(20).max(5000),
   }),
 });
+
+export const premiumInterestSchema = z.object({
+  body: z.object({
+    plan: z.enum(['PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER']),
+    intent: z.enum(['NOTIFY_ME', 'UPGRADE']),
+    source: z.string().min(2).max(100).optional(),
+  }),
+});

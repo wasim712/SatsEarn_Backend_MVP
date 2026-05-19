@@ -7,6 +7,8 @@ export class UserController {
   static async getLeaderboard(req: Request, res: Response) { return userAccountHandlers.getLeaderboard(req, res); }
   static async getProfile(req: Request, res: Response) { return userAccountHandlers.getProfile(req, res); }
   static async updateProfile(req: Request, res: Response) { return userAccountHandlers.updateProfile(req, res); }
+  static async registerPremiumInterest(req: Request, res: Response) { return userAccountHandlers.registerPremiumInterest(req, res); }
+  static async getPremiumRequests(req: Request, res: Response) { return userAccountHandlers.getPremiumRequests(req, res); }
   static async changePassword(req: Request, res: Response) { return userAccountHandlers.changePassword(req, res); }
   static async getCampaigns(req: Request, res: Response) { return userTaskHandlers.getCampaigns(req, res); }
   static async getCampaignDetails(req: Request, res: Response) { return userTaskHandlers.getCampaignDetails(req, res); }

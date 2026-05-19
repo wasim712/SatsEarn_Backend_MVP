@@ -22,6 +22,8 @@ import {
   updateCampaignSchema,
   updateDailyQuizSchema,
   updateFaqItemSchema,
+  updatePremiumRequestSchema,
+  updateUserPremiumSchema,
   updateTaskSchema,
 } from './admin.schema';
 
@@ -79,10 +81,13 @@ router.put('/settings', AdminController.updatePlatformSettings);
 router.get('/cheat-user', AdminController.getCheatUser);
 router.put('/cheat-user', validate(updateCheatUserSchema), AdminController.updateCheatUser);
 router.get('/users', AdminController.getAllUsers);
+router.get('/premium-requests', AdminController.getPremiumRequests);
 router.get('/users/:id', AdminController.getUserDetails);
 router.post('/users/:id/ban', AdminController.banUser);
 router.post('/users/:id/activate', AdminController.activateUser);
 router.delete('/users/:id', AdminController.deleteUser);
+router.put('/users/:id/premium', validate(updateUserPremiumSchema), AdminController.updateUserPremium);
+router.put('/premium-requests/:id', validate(updatePremiumRequestSchema), AdminController.updatePremiumRequest);
 
 router.post('/quiz/daily', validate(createDailyQuizSchema), AdminController.createDailyQuiz);
 router.get('/quiz/daily', AdminController.getAllDailyQuizzes);

@@ -239,3 +239,17 @@ export const updateCheatUserSchema = z.object({
     isActive: z.boolean().optional(),
   }).strict(),
 });
+
+export const updateUserPremiumSchema = z.object({
+  body: z.object({
+    premiumTier: PremiumTierEnum.nullable(),
+    premiumExpiresAt: z.string().datetime().nullable(),
+  }).strict(),
+});
+
+export const updatePremiumRequestSchema = z.object({
+  body: z.object({
+    status: z.enum(['OPEN', 'CONTACTED', 'COMPLETED', 'CANCELLED']),
+    adminNotes: z.string().max(1000).optional(),
+  }).strict(),
+});
