@@ -7,6 +7,7 @@ import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { UserController } from './user.controller';
 import {
+  claimSatWormRewardSchema,
   premiumInterestSchema,
   requestWithdrawalSchema,
   submitBugReportSchema,
@@ -53,6 +54,7 @@ router.get('/faqs', UserController.getActiveFaqs);
 router.post('/bug-reports', upload.single('screenshot'), decryptObfuscatedMultipart, validate(submitBugReportSchema), UserController.submitBugReport);
 
 router.post('/streak/claim', UserController.claimStreak);
+router.post('/minigames/sat-worm/claim', validate(claimSatWormRewardSchema), UserController.claimSatWormReward);
 router.get('/quiz/today', UserController.getTodayQuiz);
 router.post('/quiz/today/submit', validate(submitDailyQuizSchema), UserController.submitTodayQuiz);
 

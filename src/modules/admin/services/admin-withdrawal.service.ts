@@ -24,7 +24,7 @@ export class AdminWithdrawalService {
       const hasPremium = TierUtils.isPremiumActive(withdrawal.user as any);
       return {
         ...withdrawal,
-        lightningInvoice: CryptoUtil.mask(withdrawal.lightningInvoice),
+        lightningInvoice: CryptoUtil.decrypt(withdrawal.lightningInvoice),
         paymentProof: CryptoUtil.decrypt(withdrawal.paymentProof),
         user: {
           ...withdrawal.user,

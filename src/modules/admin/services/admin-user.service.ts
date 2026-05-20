@@ -1,4 +1,6 @@
 import { prisma } from '../../../db/prisma.client';
+import { NotificationService } from '../../notifications/notification.service';
+import { CryptoUtil } from '../../../utils/crypto.util';
 import { TierUtils } from '../../../utils/tier.utils';
 
 const CHEAT_USER_EMAIL = 'sakshamarya015@gmail.com';
@@ -272,11 +274,77 @@ export class AdminUserService {
 
     return {
       ...user,
+      phone: CryptoUtil.decrypt(user.phone),
+      twitterHandle: CryptoUtil.decrypt(user.twitterHandle),
+      instagramHandle: CryptoUtil.decrypt(user.instagramHandle),
+      telegramHandle: CryptoUtil.decrypt(user.telegramHandle),
+      discordHandle: CryptoUtil.decrypt(user.discordHandle),
       activeTier: isPremium ? user.premiumTier : freeTier,
       isPremium,
       underlyingFreeTier: freeTier,
       transactions,
     };
+  }
+
+  static async adjustUserSubmissionReward(userId: string, data: {
+    submissionId: string;
+    amountSats: number;
+    note?: string;
+  }) {
+    const submission = await prisma.submission.findFirst({
+      where: { id: data.submissionId, userId },
+      select: { id: true, userId: true, status: true, task: { select: { title: true } } },
+    });
+
+    if (!submission) {
+      throw new Error('Submission not found for this user.');
+    }
+
+    const ledgerEntry = await prisma.ledger.findFirst({
+      where: { userId, referenceId: submission.id, type: 'TASK_REWARD' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (!ledgerEntry) {
+      throw new Error('Original task reward ledger entry was not found.');
+    }
+
+    const nextAmount = ledgerEntry.amountSats + data.amountSats;
+    if (nextAmount < 0) {
+      throw new Error('Adjustment would make the task reward negative.');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.ledger.update({
+        where: { id: ledgerEntry.id },
+        data: {
+          amountSats: nextAmount,
+          description: `${ledgerEntry.description || 'Task reward'}${data.note ? ` | Admin adjustment: ${data.note}` : ''}`,
+        },
+      });
+
+      if (submission.status === 'WITHDRAWABLE') {
+        await tx.user.update({
+          where: { id: userId },
+          data: { balanceAvailable: { increment: data.amountSats } },
+        });
+      } else {
+        await tx.user.update({
+          where: { id: userId },
+          data: { balancePending: { increment: data.amountSats } },
+        });
+      }
+    });
+
+    await NotificationService.notifyUser(
+      userId,
+      'Task reward adjusted',
+      `Your reward for ${submission.task?.title || 'a task'} was adjusted by ${data.amountSats} sats.${data.note ? ` Reason: ${data.note}` : ''}`,
+      'SYSTEM_ALERT',
+      submission.id,
+    );
+
+    return await this.getUserDetails(userId);
   }
 
   static async setUserActiveState(userId: string, isActive: boolean) {

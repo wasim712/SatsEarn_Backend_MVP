@@ -23,6 +23,7 @@ import {
   updateDailyQuizSchema,
   updateFaqItemSchema,
   updatePremiumRequestSchema,
+  adjustUserSubmissionRewardSchema,
   updateUserPremiumSchema,
   updateTaskSchema,
 } from './admin.schema';
@@ -87,6 +88,7 @@ router.post('/users/:id/ban', AdminController.banUser);
 router.post('/users/:id/activate', AdminController.activateUser);
 router.delete('/users/:id', AdminController.deleteUser);
 router.put('/users/:id/premium', validate(updateUserPremiumSchema), AdminController.updateUserPremium);
+router.post('/users/:id/submission-adjustment', validate(adjustUserSubmissionRewardSchema), AdminController.adjustUserSubmissionReward);
 router.put('/premium-requests/:id', validate(updatePremiumRequestSchema), AdminController.updatePremiumRequest);
 
 router.post('/quiz/daily', validate(createDailyQuizSchema), AdminController.createDailyQuiz);

@@ -136,6 +136,12 @@ export const adminManagementHandlers = {
       res.status(200).json({ message: 'User premium tier updated successfully.', user });
     } catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async adjustUserSubmissionReward(req: Request, res: Response) {
+    try {
+      const user = await AdminService.adjustUserSubmissionReward(req.params.id as string, req.body);
+      res.status(200).json({ message: 'Submission reward adjusted successfully.', user });
+    } catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async updatePremiumRequest(req: Request, res: Response) {
     try {
       const request = await AdminService.updatePremiumRequest(req.params.id as string, req.body);

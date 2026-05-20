@@ -36,6 +36,7 @@ export class AdminController {
   static async activateUser(req: Request, res: Response) { return adminManagementHandlers.activateUser(req, res); }
   static async deleteUser(req: Request, res: Response) { return adminManagementHandlers.deleteUser(req, res); }
   static async updateUserPremium(req: Request, res: Response) { return adminManagementHandlers.updateUserPremium(req, res); }
+  static async adjustUserSubmissionReward(req: Request, res: Response) { return adminManagementHandlers.adjustUserSubmissionReward(req, res); }
   static async updatePremiumRequest(req: Request, res: Response) { return adminManagementHandlers.updatePremiumRequest(req, res); }
   static async createDailyQuiz(req: Request, res: Response) { return adminManagementHandlers.createDailyQuiz(req, res); }
   static async getAllDailyQuizzes(req: Request, res: Response) { return adminManagementHandlers.getAllDailyQuizzes(req, res); }
