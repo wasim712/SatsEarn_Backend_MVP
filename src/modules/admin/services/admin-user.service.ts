@@ -138,7 +138,12 @@ export class AdminUserService {
   }
 
   static async getAllUsers() {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const users = await prisma.user.findMany({
+      where: {
+        role: 'USER',
+      },
       select: {
         id: true,
         email: true,
@@ -165,17 +170,21 @@ export class AdminUserService {
     return users.map((user) => {
       const isPremium = TierUtils.isPremiumActive(user as any);
       const freeTier = TierUtils.getFreeTier(user.totalXp);
+      const isRecentlyActive = Boolean(user.lastActivityAt && user.lastActivityAt >= twentyFourHoursAgo);
 
       return {
         ...user,
         activeTier: isPremium ? user.premiumTier : freeTier,
         isPremium,
+        isRecentlyActive,
         underlyingFreeTier: freeTier,
       };
     });
   }
 
   static async getUserDetails(userId: string) {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -281,6 +290,7 @@ export class AdminUserService {
       discordHandle: CryptoUtil.decrypt(user.discordHandle),
       activeTier: isPremium ? user.premiumTier : freeTier,
       isPremium,
+      isRecentlyActive: Boolean(user.lastActivityAt && user.lastActivityAt >= twentyFourHoursAgo),
       underlyingFreeTier: freeTier,
       transactions,
     };

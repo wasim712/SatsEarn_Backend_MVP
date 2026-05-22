@@ -50,7 +50,10 @@ export class UserLeaderboardService {
         type: {
           in: ['TASK_REWARD', 'REFERRAL_BONUS', 'WELCOME_BONUS', 'STREAK_BONUS', 'DAILY_QUIZ_REWARD'],
         },
-        user: { isActive: true },
+        user: {
+          isActive: true,
+          role: 'USER',
+        },
       },
       select: {
         amountSats: true,
@@ -90,7 +93,10 @@ export class UserLeaderboardService {
 
   private static async getStreakLeaderboard(): Promise<LeaderboardEntry[]> {
     const users = await prisma.user.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        role: 'USER',
+      },
       orderBy: [{ currentStreak: 'desc' }, { totalXp: 'desc' }],
       take: 20,
       select: {

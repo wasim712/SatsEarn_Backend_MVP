@@ -7,6 +7,8 @@ export class AdminDashboardService {
 
     const [
       totalUsers,
+      accountActiveUsers,
+      accountInactiveUsers,
       newSignups24h,
       activeUsers24h,
       premiumUsers,
@@ -25,6 +27,8 @@ export class AdminDashboardService {
       recentTransactions,
     ] = await Promise.all([
       prisma.user.count({ where: { role: 'USER' } }),
+      prisma.user.count({ where: { role: 'USER', isActive: true } }),
+      prisma.user.count({ where: { role: 'USER', isActive: false } }),
       prisma.user.count({
         where: {
           role: 'USER',
@@ -121,6 +125,8 @@ export class AdminDashboardService {
     return {
       users: {
         total: totalUsers,
+        accountActive: accountActiveUsers,
+        accountInactive: accountInactiveUsers,
         newLast24h: newSignups24h,
         activeLast24h: activeUsers24h,
         premium: premiumUsers,

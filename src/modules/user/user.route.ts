@@ -49,6 +49,7 @@ router.get('/referrals', UserController.getReferralDashboard);
 router.get('/unlocks', UserController.getUnlockSchedule);
 router.get('/submissions', UserController.getSubmissionHistory);
 router.get('/bug-reports', UserController.getMyBugReports);
+router.get('/bug-reports/stats', UserController.getBugBountyStats);
 router.get('/blogs', UserController.getPublishedBlogs);
 router.get('/faqs', UserController.getActiveFaqs);
 router.post('/bug-reports', upload.single('screenshot'), decryptObfuscatedMultipart, validate(submitBugReportSchema), UserController.submitBugReport);
