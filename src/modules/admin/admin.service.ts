@@ -132,6 +132,9 @@ export class AdminService {
   }) {
     return await AdminUserService.updateUserPremium(userId, data);
   }
+  static async adjustUserSubmissionReward(userId: string, data: { submissionId: string; amountSats: number; note?: string }) {
+    return await AdminUserService.adjustUserSubmissionReward(userId, data);
+  }
   static async updatePremiumRequest(requestId: string, data: {
     status: 'OPEN' | 'CONTACTED' | 'COMPLETED' | 'CANCELLED';
     adminNotes?: string;

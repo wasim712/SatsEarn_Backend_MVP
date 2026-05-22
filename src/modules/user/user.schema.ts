@@ -67,3 +67,17 @@ export const premiumInterestSchema = z.object({
     source: z.string().min(2).max(100).optional(),
   }),
 });
+
+export const claimSatWormRewardSchema = z.object({
+  body: z.object({
+    score: z.number().int().min(0).max(5000),
+    satsEarned: z.number().int().min(0).max(500),
+    xpEarned: z.number().int().min(0).max(500),
+    foodEaten: z.number().int().min(0).max(5000).optional(),
+    elapsed: z.number().int().min(0).max(1000 * 60 * 30).optional(),
+    restartCount: z.number().int().min(0).max(100).optional(),
+    violationCount: z.number().int().min(0).max(100).optional(),
+    reviveUsed: z.boolean().optional(),
+    bestScore: z.number().int().min(0).max(5000).optional(),
+  }),
+});

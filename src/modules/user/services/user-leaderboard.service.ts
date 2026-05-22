@@ -24,10 +24,11 @@ export class UserLeaderboardService {
     const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [daily, weekly, monthly, streaks] = await Promise.all([
+    const [daily, weekly, monthly, allTime, streaks] = await Promise.all([
       this.getEarningsLeaderboard(last24Hours),
       this.getEarningsLeaderboard(last7Days),
       this.getEarningsLeaderboard(last30Days),
+      this.getEarningsLeaderboard(),
       this.getStreakLeaderboard(),
     ]);
 
@@ -35,16 +36,17 @@ export class UserLeaderboardService {
       daily,
       weekly,
       monthly,
+      allTime,
       streaks,
       generatedAt: now.toISOString(),
     };
   }
 
-  private static async getEarningsLeaderboard(fromDate: Date): Promise<LeaderboardEntry[]> {
+  private static async getEarningsLeaderboard(fromDate?: Date): Promise<LeaderboardEntry[]> {
     const ledgerEntries = await prisma.ledger.findMany({
       where: {
         amountSats: { gt: 0 },
-        createdAt: { gte: fromDate },
+        ...(fromDate ? { createdAt: { gte: fromDate } } : {}),
         type: {
           in: ['TASK_REWARD', 'REFERRAL_BONUS', 'WELCOME_BONUS', 'STREAK_BONUS', 'DAILY_QUIZ_REWARD'],
         },

@@ -247,6 +247,14 @@ export const updateUserPremiumSchema = z.object({
   }).strict(),
 });
 
+export const adjustUserSubmissionRewardSchema = z.object({
+  body: z.object({
+    submissionId: z.string().uuid('Invalid submission ID format'),
+    amountSats: z.number().int().refine((value) => value !== 0, 'Adjustment cannot be zero'),
+    note: z.string().max(500).optional(),
+  }).strict(),
+});
+
 export const updatePremiumRequestSchema = z.object({
   body: z.object({
     status: z.enum(['OPEN', 'CONTACTED', 'COMPLETED', 'CANCELLED']),

@@ -24,6 +24,7 @@ export class UserController {
   static async getSubmissionHistory(req: Request, res: Response) { return userTaskHandlers.getSubmissionHistory(req, res); }
   static async submitQuiz(req: Request, res: Response) { return userTaskHandlers.submitQuiz(req, res); }
   static async claimStreak(req: Request, res: Response) { return userTaskHandlers.claimStreak(req, res); }
+  static async claimSatWormReward(req: Request, res: Response) { return userTaskHandlers.claimSatWormReward(req, res); }
   static async startTask(req: Request, res: Response) { return userTaskHandlers.startTask(req, res); }
   static async getTodayQuiz(req: Request, res: Response) { return userTaskHandlers.getTodayQuiz(req, res); }
   static async submitTodayQuiz(req: Request, res: Response) { return userTaskHandlers.submitTodayQuiz(req, res); }

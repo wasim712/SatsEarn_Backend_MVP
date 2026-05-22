@@ -85,6 +85,10 @@ export const userTaskHandlers = {
     try { res.status(200).json(await UserService.claimStreakBonus(req.user!.id)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async claimSatWormReward(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.claimSatWormReward(req.user!.id, req.body)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async startTask(req: Request, res: Response) {
     try { res.status(200).json(await UserService.startTaskFlow(req.user!.id, req.params.taskId as string)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
