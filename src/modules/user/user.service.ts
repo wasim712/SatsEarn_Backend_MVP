@@ -396,4 +396,8 @@ export class UserService {
   static async getMyBugReports(userId: string) {
     return await UserBugReportService.getMyBugReports(userId);
   }
+
+  static async getBugBountyStats() {
+    return await UserBugReportService.getBugBountyStats();
+  }
 }

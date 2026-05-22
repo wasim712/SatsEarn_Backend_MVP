@@ -36,4 +36,21 @@ export class UserBugReportService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  static async getBugBountyStats() {
+    const [rewardedCount, paidOutAggregate, openCount] = await Promise.all([
+      prisma.bugReport.count({ where: { status: 'REWARDED' } }),
+      prisma.bugReport.aggregate({
+        where: { status: 'REWARDED' },
+        _sum: { rewardSats: true },
+      }),
+      prisma.bugReport.count({ where: { status: 'OPEN' } }),
+    ]);
+
+    return {
+      bugsRewarded: rewardedCount,
+      satsPaidOut: paidOutAggregate._sum.rewardSats || 0,
+      openReports: openCount,
+    };
+  }
 }

@@ -69,6 +69,10 @@ export const userTaskHandlers = {
     try { res.status(200).json(await UserService.getMyBugReports(req.user!.id)); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
   },
+  async getBugBountyStats(_req: Request, res: Response) {
+    try { res.status(200).json(await UserService.getBugBountyStats()); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
   async getPublishedBlogs(_req: Request, res: Response) {
     try { res.status(200).json(await UserService.getPublishedBlogs()); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
