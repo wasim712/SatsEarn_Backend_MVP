@@ -34,14 +34,13 @@ export class UserService {
     }
 
     const safeScore = Math.max(0, Math.min(payload.score || 0, 5000));
-    const safeSats = Math.max(0, Math.min(payload.satsEarned || 0, 500));
-    const safeXp = Math.max(0, Math.min(payload.xpEarned || 0, 500));
+    const safeXp = Math.max(0, Math.min(payload.xpEarned || 0, 5));
     const violationCount = Math.max(0, payload.violationCount || 0);
     const elapsed = Math.max(0, payload.elapsed || 0);
 
-    if (safeSats <= 0 && safeXp <= 0) {
+    if (safeXp <= 0) {
       return {
-        message: 'No reward earned this round.',
+        message: 'No XP earned this round.',
         reward: { satsEarned: 0, xpEarned: 0 },
       };
     }
@@ -54,40 +53,29 @@ export class UserService {
       throw new Error('This game run was too short to claim rewards.');
     }
 
-    const cappedSats = Math.min(safeSats, Math.max(10, Math.floor(safeScore / 2)));
-    const cappedXp = Math.min(safeXp, Math.max(5, Math.floor(safeScore / 2)));
-    const description = `SAT-WORM reward - Score ${safeScore}${payload.bestScore ? ` - Best ${payload.bestScore}` : ''}`;
+    const cappedXp = 5;
+    const description = `SAT-WORM XP reward - Score ${safeScore}${payload.bestScore ? ` - Best ${payload.bestScore}` : ''}`;
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
         data: {
-          balanceAvailable: { increment: cappedSats },
           totalXp: { increment: cappedXp },
-        },
-      });
-
-      await tx.ledger.create({
-        data: {
-          userId,
-          amountSats: cappedSats,
-          type: 'DAILY_QUIZ_REWARD',
-          description,
         },
       });
     });
 
     await NotificationService.notifyUser(
       userId,
-      'SAT-WORM reward claimed',
-      `You earned ${cappedSats} sats and ${cappedXp} XP from SAT-WORM. Score: ${safeScore}.`,
+      'SAT-WORM XP claimed',
+      `You earned ${cappedXp} XP from SAT-WORM. Score: ${safeScore}.`,
       'SYSTEM_ALERT'
     );
 
     return {
-      message: 'SAT-WORM rewards added successfully.',
+      message: 'SAT-WORM XP added successfully.',
       reward: {
-        satsEarned: cappedSats,
+        satsEarned: 0,
         xpEarned: cappedXp,
       },
     };
