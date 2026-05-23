@@ -1,3 +1,4 @@
+import { BillingCycle, BillingSource } from '@prisma/client';
 import { prisma } from '../../../db/prisma.client';
 import { NotificationService } from '../../notifications/notification.service';
 import { CryptoUtil } from '../../../utils/crypto.util';
@@ -228,6 +229,10 @@ export class AdminUserService {
           orderBy: { createdAt: 'desc' },
           take: 20,
         },
+        billingRecords: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
         quizAttempts: {
           include: {
             dailyQuiz: {
@@ -427,12 +432,29 @@ export class AdminUserService {
 
     if (!user) throw new Error('User not found');
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        premiumTier: data.premiumTier,
-        premiumExpiresAt: data.premiumExpiresAt ? new Date(data.premiumExpiresAt) : null,
-      },
+    const premiumExpiresAt = data.premiumExpiresAt ? new Date(data.premiumExpiresAt) : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          premiumTier: data.premiumTier,
+          premiumExpiresAt,
+        },
+      });
+
+      if (data.premiumTier) {
+        await tx.billingRecord.create({
+          data: {
+            userId,
+            premiumTier: data.premiumTier,
+            billingCycle: BillingCycle.MONTHLY,
+            billingSource: BillingSource.ADMIN_OVERRIDE,
+            adminNotes: 'Premium tier updated manually by admin.',
+            premiumExpiresAt,
+          },
+        });
+      }
     });
 
     return await this.getUserDetails(userId);

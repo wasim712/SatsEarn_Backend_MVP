@@ -8,10 +8,13 @@ export class UserController {
   static async getProfile(req: Request, res: Response) { return userAccountHandlers.getProfile(req, res); }
   static async updateProfile(req: Request, res: Response) { return userAccountHandlers.updateProfile(req, res); }
   static async registerPremiumInterest(req: Request, res: Response) { return userAccountHandlers.registerPremiumInterest(req, res); }
+  static async upgradePremiumUsingSats(req: Request, res: Response) { return userAccountHandlers.upgradePremiumUsingSats(req, res); }
   static async getPremiumRequests(req: Request, res: Response) { return userAccountHandlers.getPremiumRequests(req, res); }
   static async changePassword(req: Request, res: Response) { return userAccountHandlers.changePassword(req, res); }
   static async getCampaigns(req: Request, res: Response) { return userTaskHandlers.getCampaigns(req, res); }
+  static async getStandaloneTasks(req: Request, res: Response) { return userTaskHandlers.getStandaloneTasks(req, res); }
   static async getCampaignDetails(req: Request, res: Response) { return userTaskHandlers.getCampaignDetails(req, res); }
+  static async getStandaloneTaskDetails(req: Request, res: Response) { return userTaskHandlers.getStandaloneTaskDetails(req, res); }
   static async getTaskStatus(req: Request, res: Response) { return userTaskHandlers.getTaskStatus(req, res); }
   static async submitTaskProof(req: Request, res: Response) { return userTaskHandlers.submitTaskProof(req, res); }
   static async deleteAccount(req: Request, res: Response) { return userAccountHandlers.deleteAccount(req, res); }

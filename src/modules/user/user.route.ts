@@ -9,6 +9,7 @@ import { UserController } from './user.controller';
 import {
   claimSatWormRewardSchema,
   premiumInterestSchema,
+  premiumSatsUpgradeSchema,
   requestWithdrawalSchema,
   submitBugReportSchema,
   submitDailyQuizSchema,
@@ -28,6 +29,7 @@ router.get('/profile', UserController.getProfile);
 router.patch('/profile', validate(updateProfileSchema), UserController.updateProfile);
 router.get('/premium-interest', UserController.getPremiumRequests);
 router.post('/premium-interest', validate(premiumInterestSchema), UserController.registerPremiumInterest);
+router.post('/premium-upgrade/sats', validate(premiumSatsUpgradeSchema), UserController.upgradePremiumUsingSats);
 router.get('/dashboard', UserController.getDashboard);
 router.get('/leaderboard', UserController.getLeaderboard);
 router.post('/change-password', UserController.changePassword);
@@ -38,6 +40,8 @@ router.get('/settings', async (_req, res) => {
   res.json(settings || {});
 });
 router.get('/campaigns', UserController.getCampaigns);
+router.get('/standalone-tasks', UserController.getStandaloneTasks);
+router.get('/standalone-tasks/:taskId', UserController.getStandaloneTaskDetails);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
 router.get('/tasks/:taskId/status', UserController.getTaskStatus);
 

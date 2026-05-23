@@ -265,6 +265,13 @@ export class UserService {
     return await UserAccountService.getUserProfile(userId);
   }
 
+  static async upgradePremiumUsingSats(userId: string, data: {
+    plan: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER';
+    billingCycle: 'MONTHLY' | 'YEARLY';
+  }) {
+    return await UserAccountService.upgradePremiumUsingSats(userId, data as any);
+  }
+
   static async updateProfile(userId: string, data: any) {
     return await UserAccountService.updateProfile(userId, data);
   }
@@ -281,8 +288,16 @@ export class UserService {
     return await UserCampaignService.getAvailableCampaigns(userId);
   }
 
+  static async getStandaloneTasks(userId: string) {
+    return await UserCampaignService.getStandaloneTasks(userId);
+  }
+
   static async getCampaignDetails(userId: string, campaignId: string) {
     return await UserCampaignService.getCampaignDetails(userId, campaignId);
+  }
+
+  static async getStandaloneTaskDetails(userId: string, taskId: string) {
+    return await UserCampaignService.getStandaloneTaskDetails(userId, taskId);
   }
 
   static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {

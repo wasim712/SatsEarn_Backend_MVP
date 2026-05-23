@@ -43,6 +43,32 @@ export const adminCampaignHandlers = {
     try { await AdminService.deleteCampaign(req.params.id as string); res.status(200).json({ message: 'Campaign deleted successfully' }); }
     catch (error: any) { res.status(error.message === 'Campaign not found' ? 404 : 400).json({ error: error.message }); }
   },
+  async createStandaloneTask(req: Request, res: Response) {
+    try {
+      res.status(201).json({
+        message: 'Standalone task created successfully',
+        ...(await AdminService.createStandaloneTask(req.body)),
+      });
+    }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async getAllStandaloneTasks(_req: Request, res: Response) {
+    try { res.status(200).json(await AdminService.getAllStandaloneTasks()); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
+  async getStandaloneTaskById(req: Request, res: Response) {
+    try { res.status(200).json(await AdminService.getStandaloneTaskById(req.params.taskId as string)); }
+    catch (error: any) { res.status(404).json({ error: error.message }); }
+  },
+  async updateStandaloneTask(req: Request, res: Response) {
+    try { res.status(200).json({ message: 'Task updated', task: await AdminService.updateStandaloneTask(req.params.taskId as string, req.body) }); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async deleteStandaloneTask(req: Request, res: Response) {
+    try { await AdminService.deleteStandaloneTask(req.params.taskId as string); res.status(200).json({ message: 'Task deleted successfully' }); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+
   async addTaskToCampaign(req: Request, res: Response) {
     try { res.status(201).json({ message: 'Task added successfully', task: await AdminService.addTaskToCampaign(req.params.campaignId as string, req.body) }); }
     catch (error: any) { res.status(400).json({ error: error.message }); }

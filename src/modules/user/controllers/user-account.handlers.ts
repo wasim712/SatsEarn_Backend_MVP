@@ -22,6 +22,10 @@ export const userAccountHandlers = {
     try { res.status(200).json(await UserService.registerPremiumInterest(req.user!.id, req.body)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async upgradePremiumUsingSats(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.upgradePremiumUsingSats(req.user!.id, req.body)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async getPremiumRequests(req: Request, res: Response) {
     try { res.status(200).json(await UserService.getPremiumRequests(req.user!.id)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }

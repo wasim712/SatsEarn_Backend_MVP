@@ -32,6 +32,21 @@ export class AdminService {
   static async deleteCampaign(id: string) {
     return await AdminCampaignService.deleteCampaign(id);
   }
+  static async createStandaloneTask(data: any) {
+    return await AdminCampaignService.createStandaloneTask(data);
+  }
+  static async getAllStandaloneTasks() {
+    return await AdminCampaignService.getAllStandaloneTasks();
+  }
+  static async getStandaloneTaskById(taskId: string) {
+    return await AdminCampaignService.getStandaloneTaskById(taskId);
+  }
+  static async updateStandaloneTask(taskId: string, data: any) {
+    return await AdminCampaignService.updateStandaloneTask(taskId, data);
+  }
+  static async deleteStandaloneTask(taskId: string) {
+    return await AdminCampaignService.deleteStandaloneTask(taskId);
+  }
   static async addTaskToCampaign(campaignId: string, data: any) {
     return await AdminCampaignService.addTaskToCampaign(campaignId, data);
   }

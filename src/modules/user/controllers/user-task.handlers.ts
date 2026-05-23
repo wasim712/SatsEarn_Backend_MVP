@@ -7,8 +7,16 @@ export const userTaskHandlers = {
     try { res.status(200).json(await UserService.getAvailableCampaigns(req.user!.id)); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
   },
+  async getStandaloneTasks(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.getStandaloneTasks(req.user!.id)); }
+    catch (error: any) { res.status(500).json({ error: error.message }); }
+  },
   async getCampaignDetails(req: Request, res: Response) {
     try { res.status(200).json(await UserService.getCampaignDetails(req.user!.id, req.params.id as string)); }
+    catch (error: any) { res.status(404).json({ error: error.message }); }
+  },
+  async getStandaloneTaskDetails(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.getStandaloneTaskDetails(req.user!.id, req.params.taskId as string)); }
     catch (error: any) { res.status(404).json({ error: error.message }); }
   },
   async submitTaskProof(req: Request, res: Response) {

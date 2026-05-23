@@ -14,23 +14,8 @@ export const createCampaignSchema = z.object({
     requiredFreeTier: z.nativeEnum(FreeTier).default('BASIC'),
     requiredPlatform: z.nativeEnum(CampaignDevice).default('NONE'),
 
-    baseRewardSats: z.number().int().positive(),
-    xpReward: z.number().int().min(0).default(0),
     doubleRewardsStartAt: z.string().datetime().optional(),
     doubleRewardsEndAt: z.string().datetime().optional(),
-
-    tierRewardMatrix: z.object({
-      BASIC: z.number().int(),
-      COPPER: z.number().int(),
-      BRONZE: z.number().int(),
-      SILVER: z.number().int(),
-      GOLD: z.number().int(),
-      PLATINUM: z.number().int(),
-      DIAMOND: z.number().int(),
-      CROWN: z.number().int(),
-      ELITE: z.number().int(),
-      FOUNDER: z.number().int(),
-    }),
 
     maxCompletions: z.number().int().positive()
   })
@@ -49,25 +34,11 @@ export const updateCampaignSchema = z.object({
     isActive: z.boolean().optional(),
     requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
 
-    // NEW ECONOMICS
+    // CAMPAIGN SETTINGS
     isPremiumOnly: z.boolean().optional(),
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
-    baseRewardSats: z.number().int().positive().optional(),
-    xpReward: z.number().int().min(0).optional(),
     doubleRewardsStartAt: z.string().datetime().optional().nullable(),
     doubleRewardsEndAt: z.string().datetime().optional().nullable(),
-    tierRewardMatrix: z.object({
-      BASIC: z.number().int(),
-      COPPER: z.number().int(),
-      BRONZE: z.number().int(),
-      SILVER: z.number().int(),
-      GOLD: z.number().int(),
-      PLATINUM: z.number().int(),
-      DIAMOND: z.number().int(),
-      CROWN: z.number().int(),
-      ELITE: z.number().int(),
-      FOUNDER: z.number().int(),
-    }).optional(),
   }),
 });
 

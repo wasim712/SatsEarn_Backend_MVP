@@ -16,24 +16,11 @@ export class AdminCampaignService {
         requiredPlatform: data.requiredPlatform || 'NONE',
         isPremiumOnly: data.isPremiumOnly || false,
         requiredFreeTier: data.requiredFreeTier || 'BASIC',
-        baseRewardSats: data.baseRewardSats,
-        xpReward: data.xpReward || 0,
+        baseRewardSats: 0,
+        xpReward: 0,
         doubleRewardsStartAt: data.doubleRewardsStartAt ? new Date(data.doubleRewardsStartAt) : null,
         doubleRewardsEndAt: data.doubleRewardsEndAt ? new Date(data.doubleRewardsEndAt) : null,
-        tierRewardMatrix: data.tierRewardMatrix,
-        tasks: {
-          create: {
-            title: data.title,
-            description: data.description,
-            targetUrl: data.targetUrl || null,
-            proofType: 'SCREENSHOT',
-            baseRewardSatsOverride: data.baseRewardSats || null,
-            xpRewardOverride: data.xpReward ?? 0,
-            requirements: {
-              requiredPlatform: data.requiredPlatform || 'NONE',
-            },
-          },
-        },
+        tierRewardMatrix: { BASIC: 0, COPPER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0, DIAMOND: 0, CROWN: 0, ELITE: 0, FOUNDER: 0 },
       },
       include: {
         tasks: true,
@@ -154,7 +141,16 @@ export class AdminCampaignService {
   }
 
   static async getAllCampaigns() {
-    return await prisma.campaign.findMany({ orderBy: { createdAt: 'desc' } });
+    const campaigns = await prisma.campaign.findMany({
+      where: { isActive: true },
+      include: { tasks: { select: { requirements: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return campaigns.map((campaign) => ({
+      ...campaign,
+      isStandalone: campaign.tasks.length > 0 && campaign.tasks.every((task) => Boolean((task.requirements as any)?.standalone)),
+    }));
   }
 
   static async getCampaignById(id: string) {
@@ -164,17 +160,28 @@ export class AdminCampaignService {
     });
 
     if (!campaign) throw new Error('Campaign not found');
-    return campaign;
+    return {
+      ...campaign,
+      isStandalone: campaign.tasks.length > 0 && campaign.tasks.every((task) => Boolean((task.requirements as any)?.standalone)),
+    };
   }
 
   static async updateCampaign(id: string, data: any) {
     await this.getCampaignById(id);
+
+    const {
+      baseRewardSats: _baseRewardSats,
+      tierRewardMatrix: _tierRewardMatrix,
+      xpReward: _xpReward,
+      ...safeData
+    } = data;
+
     return await prisma.campaign.update({
       where: { id },
       data: {
-        ...data,
-        ...(Object.prototype.hasOwnProperty.call(data, 'coverImageUrl')
-          ? { coverImageUrl: data.coverImageUrl || null }
+        ...safeData,
+        ...(Object.prototype.hasOwnProperty.call(safeData, 'coverImageUrl')
+          ? { coverImageUrl: safeData.coverImageUrl || null }
           : {}),
       },
     });
@@ -182,8 +189,145 @@ export class AdminCampaignService {
 
   static async deleteCampaign(id: string) {
     await this.getCampaignById(id);
-    await prisma.task.deleteMany({ where: { campaignId: id } });
-    return await prisma.campaign.delete({ where: { id } });
+    return await prisma.campaign.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  }
+
+
+  static async createStandaloneTask(data: any) {
+    const standaloneCampaign = await prisma.campaign.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        category: 'SOCIAL',
+        coverImageUrl: null,
+        targetUrl: data.targetUrl || null,
+        socialHandleTarget: null,
+        targetCountries: [],
+        requiredPlatform: 'NONE',
+        requiredFreeTier: 'BASIC',
+        isPremiumOnly: false,
+        baseRewardSats: 0,
+        xpReward: 0,
+        tierRewardMatrix: { BASIC: 0, COPPER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0, DIAMOND: 0, CROWN: 0, ELITE: 0, FOUNDER: 0 },
+        maxCompletions: 999999999,
+        isActive: true,
+      },
+    });
+
+    const task = await prisma.task.create({
+      data: {
+        campaignId: standaloneCampaign.id,
+        title: data.title,
+        description: data.description,
+        targetUrl: data.targetUrl || null,
+        proofType: data.proofType || 'SCREENSHOT',
+        baseRewardSatsOverride: data.baseRewardSatsOverride || null,
+        tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
+        xpRewardOverride: data.xpRewardOverride ?? null,
+        requirements: {
+          requiredPlatform: data.requiredPlatform || 'NONE',
+          standalone: true,
+        },
+      },
+    });
+
+    return {
+      campaign: standaloneCampaign,
+      task,
+    };
+  }
+
+
+  static async getAllStandaloneTasks() {
+    return await prisma.task.findMany({
+      where: {
+        requirements: {
+          path: ['standalone'],
+          equals: true,
+        },
+      },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            title: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  static async getStandaloneTaskById(taskId: string) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        campaign: true,
+      },
+    });
+
+    if (!task || !(task.requirements as any)?.standalone) {
+      throw new Error('Standalone task not found');
+    }
+
+    return task;
+  }
+
+  static async updateStandaloneTask(taskId: string, data: any) {
+    await this.getStandaloneTaskById(taskId);
+
+    const {
+      title,
+      description,
+      targetUrl,
+      proofType,
+      baseRewardSatsOverride,
+      tierRewardMatrixOverride,
+      xpRewardOverride,
+      requiredPlatform,
+    } = data;
+
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        title,
+        description,
+        targetUrl,
+        proofType,
+        baseRewardSatsOverride,
+        tierRewardMatrixOverride,
+        xpRewardOverride,
+        requirements: {
+          ...(data.requirements || {}),
+          standalone: true,
+          requiredPlatform: requiredPlatform || 'NONE',
+        },
+      },
+      include: { campaign: true },
+    });
+
+    await prisma.campaign.update({
+      where: { id: updatedTask.campaignId },
+      data: {
+        title: title ?? updatedTask.title,
+        description: description ?? updatedTask.description ?? '',
+        targetUrl: targetUrl === '' ? null : (targetUrl ?? undefined),
+      },
+    });
+
+    return await this.getStandaloneTaskById(taskId);
+  }
+
+  static async deleteStandaloneTask(taskId: string) {
+    const task = await this.getStandaloneTaskById(taskId);
+    await prisma.task.delete({ where: { id: taskId } });
+    return await prisma.campaign.delete({ where: { id: task.campaignId } });
   }
 
   static async addTaskToCampaign(campaignId: string, data: any) {
@@ -256,3 +400,4 @@ export class AdminCampaignService {
     return await prisma.task.delete({ where: { id: taskId } });
   }
 }
+
