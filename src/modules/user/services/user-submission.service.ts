@@ -94,8 +94,12 @@ export class UserSubmissionService {
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
-    const rewardMatrix: any = task.tierRewardMatrixOverride || task.campaign.tierRewardMatrix;
-    const configuredReward = Number(rewardMatrix[activeTier as string] || 0);
+    const campaignRewardMatrix = (task.campaign.tierRewardMatrix || {}) as Record<string, number>;
+    const overrideRewardMatrix = (task.tierRewardMatrixOverride || {}) as Record<string, number>;
+    const tierKey = String(activeTier || '');
+    const overrideReward = Number(overrideRewardMatrix[tierKey] || 0);
+    const campaignReward = Number(campaignRewardMatrix[tierKey] || 0);
+    const configuredReward = overrideReward > 0 ? overrideReward : campaignReward;
     if (configuredReward <= 0) {
       throw new Error('This task does not have a configured reward for your tier.');
     }

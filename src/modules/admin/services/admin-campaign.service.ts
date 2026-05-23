@@ -45,9 +45,18 @@ export class AdminCampaignService {
     const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
     if (!campaign) throw new Error('Campaign not found');
 
+    const campaignTasks = await prisma.task.findMany({
+      where: { campaignId },
+      select: { id: true },
+    });
+
+    const campaignTaskIds = campaignTasks.map((task) => task.id);
+
     const submissions = await prisma.submission.findMany({
       where: { task: { campaignId } },
       select: {
+        id: true,
+        userId: true,
         status: true,
         submittedAt: true,
         user: {
@@ -61,13 +70,38 @@ export class AdminCampaignService {
       },
     });
 
+    const submissionIds = submissions.map((submission) => submission.id);
+
+    const rewardLedgers = submissionIds.length
+      ? await prisma.ledger.findMany({
+          where: {
+            type: 'TASK_REWARD',
+            referenceId: { in: submissionIds },
+          },
+          select: {
+            amountSats: true,
+            referenceId: true,
+            description: true,
+          },
+        })
+      : [];
+
     const analytics = {
       totalSubmissions: submissions.length,
       statusCounts: { verified: 0, pending: 0, rejected: 0 },
       geographicDistribution: {} as Record<string, number>,
       tierDistribution: {} as Record<string, number>,
+      satsByTierDistribution: {} as Record<string, number>,
       timeOfDayPatterns: {} as Record<string, number>,
+      totalTaskRewardSatsSpent: 0,
+      totalRewardedSubmissions: 0,
+      totalRewardedUsers: 0,
+      averageRewardPerApprovedSubmission: 0,
+      campaignTaskCount: campaignTaskIds.length,
     };
+
+    const rewardedUserIds = new Set<string>();
+    const submissionUserMap = new Map(submissions.map((submission) => [submission.id, submission.userId]));
 
     for (const submission of submissions) {
       if (['LOCKED_15D', 'WITHDRAWABLE'].includes(submission.status)) {
@@ -94,6 +128,27 @@ export class AdminCampaignService {
       analytics.timeOfDayPatterns[hour] =
         (analytics.timeOfDayPatterns[hour] || 0) + 1;
     }
+
+    for (const ledger of rewardLedgers) {
+      analytics.totalTaskRewardSatsSpent += Number(ledger.amountSats || 0);
+
+      const rewardedUserId = ledger.referenceId ? submissionUserMap.get(ledger.referenceId) : null;
+      if (rewardedUserId) {
+        rewardedUserIds.add(rewardedUserId);
+      }
+
+      const tierMatch = ledger.description?.match(/Tier:\s*([A-Z]+)/i);
+      const tierKey = tierMatch?.[1]?.toUpperCase() || 'UNKNOWN';
+
+      analytics.satsByTierDistribution[tierKey] =
+        (analytics.satsByTierDistribution[tierKey] || 0) + Number(ledger.amountSats || 0);
+    }
+
+    analytics.totalRewardedSubmissions = rewardLedgers.length;
+    analytics.totalRewardedUsers = rewardedUserIds.size;
+    analytics.averageRewardPerApprovedSubmission = analytics.totalRewardedSubmissions > 0
+      ? Math.floor(analytics.totalTaskRewardSatsSpent / analytics.totalRewardedSubmissions)
+      : 0;
 
     return analytics;
   }
