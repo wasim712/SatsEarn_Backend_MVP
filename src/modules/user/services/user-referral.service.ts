@@ -13,10 +13,19 @@ export class UserReferralService {
         referrals: {
           select: {
             id: true,
+            username: true,
             fullName: true,
             email: true,
+            country: true,
             createdAt: true,
             totalXp: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            _count: {
+              select: {
+                submissions: true,
+              },
+            },
             submissions: {
               where: {
                 submittedAt: {
@@ -51,12 +60,20 @@ export class UserReferralService {
       if (isActive) activeCount++;
       else inactiveCount++;
 
+      const referralTier = TierUtils.isPremiumActive(referral as any)
+        ? referral.premiumTier
+        : TierUtils.getFreeTier(referral.totalXp);
+
       return {
         id: referral.id,
+        username: referral.username,
         fullName: referral.fullName,
         email: referral.email,
+        country: referral.country,
         joinedAt: referral.createdAt,
         totalXp: referral.totalXp,
+        tasksCompleted: referral._count.submissions,
+        tier: referralTier,
         isActive,
         daysActiveLast30: uniqueActiveDays,
       };

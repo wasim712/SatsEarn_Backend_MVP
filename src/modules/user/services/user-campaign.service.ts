@@ -3,6 +3,18 @@ import { TierUtils } from '../../../utils/tier.utils';
 import { applyDoubleReward, isDoubleRewardActive } from '../../../utils/reward.util';
 
 export class UserCampaignService {
+  private static getTierRewardForTask(
+    task: { tierRewardMatrixOverride?: unknown; campaign: { tierRewardMatrix?: unknown } },
+    activeTier: string | null | undefined,
+  ) {
+    const tierKey = String(activeTier || '');
+    const overrideMatrix = (task.tierRewardMatrixOverride || {}) as Record<string, number>;
+    const campaignMatrix = (task.campaign.tierRewardMatrix || {}) as Record<string, number>;
+    const overrideReward = Number(overrideMatrix[tierKey] || 0);
+    const campaignReward = Number(campaignMatrix[tierKey] || 0);
+    return overrideReward > 0 ? overrideReward : campaignReward;
+  }
+
   static async getAvailableCampaigns(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -31,6 +43,7 @@ export class UserCampaignService {
             id: true,
             requirements: true,
             tierRewardMatrixOverride: true,
+            xpRewardOverride: true,
             submissions: {
               where: { userId },
               select: { status: true, submittedAt: true },
@@ -59,10 +72,13 @@ export class UserCampaignService {
         const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);
         const activeTier = hasPremium ? user.premiumTier : userFreeTier;
         const taskLevelRewards = campaign.tasks.map((task) => {
-          const rewardMatrix = (task.tierRewardMatrixOverride as any) || (campaign.tierRewardMatrix as any) || {};
-          return Number(rewardMatrix?.[activeTier as string] || 0);
+          return this.getTierRewardForTask({ ...task, campaign }, activeTier as string);
         });
-        const baseTierReward = taskLevelRewards.length ? Math.max(...taskLevelRewards, 0) : 0;
+        const totalTaskReward = taskLevelRewards.reduce((sum, reward) => sum + Number(reward || 0), 0);
+        const totalTaskXp = campaign.tasks.reduce(
+          (sum, task) => sum + Number(task.xpRewardOverride ?? campaign.xpReward ?? 0),
+          0,
+        );
         const totalTasksCount = campaign.tasks.length;
         const completedTasksCount = campaign.tasks.filter((task) => {
           const latestSubmission = task.submissions[0];
@@ -75,7 +91,8 @@ export class UserCampaignService {
         return {
           ...campaign,
           isStandalone: campaign.tasks.length > 0 && campaign.tasks.every((task) => Boolean((task as any).requirements?.standalone)),
-          displayRewardSats: applyDoubleReward(baseTierReward, doubleRewardsActive),
+          displayRewardSats: applyDoubleReward(totalTaskReward, doubleRewardsActive),
+          xpReward: applyDoubleReward(totalTaskXp, doubleRewardsActive),
           doubleRewardsActive,
           requiredPlatform: campaign.tasks.length > 0 && campaign.tasks.every((task) => Boolean((task as any).requirements?.standalone)) ? 'NONE' : String(campaign.requiredPlatform || 'NONE'),
           isCompleted,
@@ -125,9 +142,8 @@ export class UserCampaignService {
     return tasks
       .filter((task) => Boolean((task.requirements as any)?.standalone))
       .map((task) => {
-        const rewardMatrix = (task.tierRewardMatrixOverride as any) || (task.campaign.tierRewardMatrix as any) || {};
         const doubleRewardsActive = isDoubleRewardActive(task.campaign.doubleRewardsStartAt, task.campaign.doubleRewardsEndAt);
-        const taskRewardSats = applyDoubleReward(Number(rewardMatrix?.[activeTier as string] || 0), doubleRewardsActive);
+        const taskRewardSats = applyDoubleReward(this.getTierRewardForTask(task, activeTier as string), doubleRewardsActive);
         const latestSubmission = task.submissions[0];
         const hasStarted = Boolean(latestSubmission);
         const isCompleted = Boolean(latestSubmission && latestSubmission.status !== 'REJECTED');
@@ -193,9 +209,8 @@ export class UserCampaignService {
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
-    const rewardMatrix = (task.tierRewardMatrixOverride as any) || (task.campaign.tierRewardMatrix as any) || {};
     const doubleRewardsActive = isDoubleRewardActive(task.campaign.doubleRewardsStartAt, task.campaign.doubleRewardsEndAt);
-    const taskRewardSats = applyDoubleReward(Number(rewardMatrix?.[activeTier as string] || 0), doubleRewardsActive);
+    const taskRewardSats = applyDoubleReward(this.getTierRewardForTask(task, activeTier as string), doubleRewardsActive);
     const latestSubmission = task.submissions[0];
     const hasStarted = Boolean(latestSubmission);
     const isCompleted = Boolean(latestSubmission && latestSubmission.status !== 'REJECTED');
@@ -261,24 +276,23 @@ export class UserCampaignService {
     const hasPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);
-    const topTaskRewardForTier = campaign.tasks.length
-      ? Math.max(
-          ...campaign.tasks.map((task) => {
-            const rewardMatrix = (task.tierRewardMatrixOverride as any) || (campaign.tierRewardMatrix as any) || {};
-            return Number(rewardMatrix?.[activeTier as string] || 0);
-          }),
-          0
-        )
-      : 0;
+    const totalTaskRewardForTier = campaign.tasks.reduce(
+      (sum, task) => sum + this.getTierRewardForTask({ ...task, campaign }, activeTier as string),
+      0,
+    );
+    const totalTaskXp = campaign.tasks.reduce(
+      (sum, task) => sum + Number(task.xpRewardOverride ?? campaign.xpReward ?? 0),
+      0,
+    );
 
     return {
       ...campaign,
       activeTier,
       doubleRewardsActive,
-      displayRewardSats: applyDoubleReward(topTaskRewardForTier, doubleRewardsActive),
+      displayRewardSats: applyDoubleReward(totalTaskRewardForTier, doubleRewardsActive),
+      xpReward: applyDoubleReward(totalTaskXp, doubleRewardsActive),
       tasks: campaign.tasks.map((task) => {
-        const rewardMatrix = (task.tierRewardMatrixOverride as any) || (campaign.tierRewardMatrix as any);
-        const taskRewardSats = applyDoubleReward(Number(rewardMatrix?.[activeTier as string] || 0), doubleRewardsActive);
+        const taskRewardSats = applyDoubleReward(this.getTierRewardForTask({ ...task, campaign }, activeTier as string), doubleRewardsActive);
         const requirements = (task.requirements as any) || {};
 
         return {

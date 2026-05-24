@@ -55,8 +55,8 @@ export const createTaskSchema = z.object({
     proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
+    xpRewardOverride: z.number().int().min(0),
     baseRewardSatsOverride: z.number().int().positive().optional(),
-    xpRewardOverride: z.number().int().min(0).optional(),
     tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
@@ -71,8 +71,8 @@ export const updateTaskSchema = z.object({
 
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
+    xpRewardOverride: z.number().int().min(0),
     baseRewardSatsOverride: z.number().int().positive().optional(),
-    xpRewardOverride: z.number().int().min(0).optional(),
     tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
