@@ -116,6 +116,17 @@ enum PremiumRequestStatus {
   CANCELLED
 }
 
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum BillingSource {
+  MANUAL_PAYMENT
+  SATS_BALANCE
+  ADMIN_OVERRIDE
+}
+
 
 // ==========================================
 // MODELS: The Data Architecture
@@ -172,12 +183,14 @@ id               String   @id @default(uuid())
 
   // --- RELATIONS ---
   submissions      Submission[]
+  standaloneSubmissions StandaloneSubmission[]
   withdrawals      Withdrawal[]
   transactions     Ledger[]     
   quizAttempts     QuizAttempt[]
   notifications    Notification[]
   bugReports       BugReport[]
   premiumRequests  PremiumRequest[]
+  billingRecords   BillingRecord[]
   
   isActive         Boolean  @default(true) // The Soft Delete Flag
   createdAt        DateTime @default(now())
@@ -223,10 +236,70 @@ model PlatformSettings {
   // 🚀 NEW: The exact % commission based on the referrer's tier
   tierReferralMatrix   Json?    
   tierMinWithdrawalMatrix Json?
+  premiumMonthlySatsMatrix Json?
+  premiumYearlySatsMatrix  Json?
 
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
   updatedAt            DateTime @updatedAt
+}
+
+model StandaloneTask {
+  id               String        @id @default(uuid())
+  title            String
+  description      String
+  targetUrl        String?
+  proofType        ProofType     @default(SCREENSHOT)
+  requiredPlatform String        @default("NONE")
+  xpReward         Int           @default(0)
+  tierRewardMatrix Json
+  isActive         Boolean       @default(true)
+  submissions      StandaloneSubmission[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([isActive, createdAt])
+}
+
+model StandaloneSubmission {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  standaloneTaskId String
+  standaloneTask   StandaloneTask   @relation(fields: [standaloneTaskId], references: [id], onDelete: Cascade)
+  ipAddress        String?
+  screenshotUrl    String?
+  proofText        String?          @db.Text
+  imageHash        String?
+  ocrExtractedText String?          @db.Text
+  confidenceScore  Int              @default(0)
+  status           SubmissionStatus @default(PENDING_24H)
+  rejectionReason  String?
+  reviewedById     String?
+  submittedAt      DateTime         @default(now())
+  reverifyAt       DateTime?
+  unlockAt         DateTime?
+
+  @@unique([userId, standaloneTaskId])
+  @@index([status])
+  @@index([imageHash])
+}
+
+model BillingRecord {
+  id                 String        @id @default(uuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  premiumTier        PremiumTier
+  billingCycle       BillingCycle
+  billingSource      BillingSource
+  amountUsd          Float?
+  amountSats         Int?
+  adminNotes         String?       @db.Text
+  premiumExpiresAt   DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 // ------------------------------------------

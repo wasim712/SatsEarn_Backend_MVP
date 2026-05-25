@@ -68,6 +68,13 @@ export const premiumInterestSchema = z.object({
   }),
 });
 
+export const premiumSatsUpgradeSchema = z.object({
+  body: z.object({
+    plan: z.enum(['PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER']),
+    billingCycle: z.enum(['MONTHLY', 'YEARLY']),
+  }),
+});
+
 export const claimSatWormRewardSchema = z.object({
   body: z.object({
     score: z.number().int().min(0).max(5000),

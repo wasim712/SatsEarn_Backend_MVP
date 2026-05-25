@@ -17,3 +17,8 @@ export type PremiumInterestInput = {
   intent: 'NOTIFY_ME' | 'UPGRADE';
   source?: string;
 };
+
+export type PremiumSatsUpgradeInput = {
+  plan: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER';
+  billingCycle: 'MONTHLY' | 'YEARLY';
+};

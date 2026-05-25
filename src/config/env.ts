@@ -48,6 +48,11 @@ const envSchema = z.object({
     .string()
     .url({ message: "Must be a valid Redis URL" })
     .optional(),
+
+  ENABLE_CRON: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .transform((value) => value === true || value === 'true'),
 });
 
 export const env = envSchema.parse(process.env);

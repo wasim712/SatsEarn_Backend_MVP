@@ -13,17 +13,44 @@ export class UserReferralService {
         referrals: {
           select: {
             id: true,
+            username: true,
             fullName: true,
             email: true,
+            country: true,
             createdAt: true,
             totalXp: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            _count: {
+              select: {
+                submissions: true,
+              },
+            },
             submissions: {
               where: {
+                status: { not: 'REJECTED' },
                 submittedAt: {
                   gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
                 },
               },
               select: { submittedAt: true },
+            },
+            standaloneSubmissions: {
+              where: {
+                status: { not: 'REJECTED' },
+                submittedAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+              select: { submittedAt: true },
+            },
+            quizAttempts: {
+              where: {
+                createdAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+              select: { createdAt: true },
             },
           },
         },
@@ -43,20 +70,30 @@ export class UserReferralService {
     let inactiveCount = 0;
 
     const referralDetails = user.referrals.map((referral) => {
-      const uniqueActiveDays = new Set(
-        referral.submissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
-      ).size;
+      const uniqueActiveDays = new Set([
+        ...referral.submissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
+        ...referral.standaloneSubmissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
+        ...referral.quizAttempts.map((attempt) => attempt.createdAt.toISOString().split('T')[0]),
+      ]).size;
 
       const isActive = uniqueActiveDays >= 10;
       if (isActive) activeCount++;
       else inactiveCount++;
 
+      const referralTier = TierUtils.isPremiumActive(referral as any)
+        ? referral.premiumTier
+        : TierUtils.getFreeTier(referral.totalXp);
+
       return {
         id: referral.id,
+        username: referral.username,
         fullName: referral.fullName,
         email: referral.email,
+        country: referral.country,
         joinedAt: referral.createdAt,
         totalXp: referral.totalXp,
+        tasksCompleted: referral._count.submissions,
+        tier: referralTier,
         isActive,
         daysActiveLast30: uniqueActiveDays,
       };

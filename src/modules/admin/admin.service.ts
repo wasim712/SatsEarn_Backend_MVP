@@ -9,6 +9,8 @@ import { AdminUserService } from "./services/admin-user.service";
 import { AdminWithdrawalService } from "./services/admin-withdrawal.service";
 import { AdminBugReportService } from './services/admin-bug-report.service';
 import { AdminFaqService } from './services/admin-faq.service';
+import { StandaloneAdminService } from '../standalone/standalone-admin.service';
+import { StandaloneReviewService } from '../standalone/standalone-review.service';
 
 export class AdminService {
   static async getOverviewMetrics() {
@@ -31,6 +33,21 @@ export class AdminService {
   }
   static async deleteCampaign(id: string) {
     return await AdminCampaignService.deleteCampaign(id);
+  }
+  static async createStandaloneTask(data: any) {
+    return await StandaloneAdminService.createTask(data);
+  }
+  static async getAllStandaloneTasks() {
+    return await StandaloneAdminService.getAllTasks();
+  }
+  static async getStandaloneTaskById(taskId: string) {
+    return await StandaloneAdminService.getTaskById(taskId);
+  }
+  static async updateStandaloneTask(taskId: string, data: any) {
+    return await StandaloneAdminService.updateTask(taskId, data);
+  }
+  static async deleteStandaloneTask(taskId: string) {
+    return await StandaloneAdminService.deleteTask(taskId);
   }
   static async addTaskToCampaign(campaignId: string, data: any) {
     return await AdminCampaignService.addTaskToCampaign(campaignId, data);
@@ -66,7 +83,7 @@ export class AdminService {
     return await AdminSettingsService.updateGamificationSettings(rawData);
   }
   static async getPendingSubmissions() {
-    return await AdminSubmissionService.getPendingSubmissions();
+    return await StandaloneReviewService.getPendingSubmissions();
   }
   static async reviewSubmission(
     submissionId: string,
@@ -74,7 +91,7 @@ export class AdminService {
     rejectionReason?: string,
     adminId?: string,
   ) {
-    return await AdminSubmissionService.reviewSubmission(
+    return await StandaloneReviewService.reviewSubmission(
       submissionId,
       status,
       rejectionReason,

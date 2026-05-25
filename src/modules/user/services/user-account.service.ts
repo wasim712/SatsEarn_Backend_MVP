@@ -1,10 +1,44 @@
 import bcrypt from 'bcryptjs';
-import { PremiumRequestStatus } from '@prisma/client';
+import { BillingCycle, BillingSource, PremiumRequestStatus, PremiumTier } from '@prisma/client';
 import { prisma } from '../../../db/prisma.client';
 import { CryptoUtil } from '../../../utils/crypto.util';
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
 import { PremiumInterestInput, UserProfileUpdateInput } from '../user.types';
+
+const PREMIUM_TIER_DURATION_DAYS: Record<PremiumTier, { monthly: number; yearly: number }> = {
+  PLATINUM: { monthly: 30, yearly: 365 },
+  DIAMOND: { monthly: 30, yearly: 365 },
+  CROWN: { monthly: 30, yearly: 365 },
+  ELITE: { monthly: 30, yearly: 365 },
+  FOUNDER: { monthly: 30, yearly: 365 },
+};
+
+function buildDefaultPremiumMonthlySatsMatrix() {
+  return {
+    PLATINUM: 6499,
+    DIAMOND: 8999,
+    CROWN: 12999,
+    ELITE: 19999,
+    FOUNDER: 0,
+  };
+}
+
+function buildDefaultPremiumYearlySatsMatrix() {
+  return {
+    PLATINUM: 72999,
+    DIAMOND: 102999,
+    CROWN: 146999,
+    ELITE: 221999,
+    FOUNDER: 299999,
+  };
+}
+
+function addDays(baseDate: Date, days: number) {
+  const next = new Date(baseDate);
+  next.setDate(next.getDate() + days);
+  return next;
+}
 
 function decryptProfileFields<T extends Record<string, any>>(user: T | null): T | null {
   if (!user) {
@@ -22,6 +56,15 @@ function decryptProfileFields<T extends Record<string, any>>(user: T | null): T 
 }
 
 export class UserAccountService {
+  static async getPremiumPricing() {
+    const settings = await prisma.platformSettings.findFirst();
+
+    return {
+      monthlySatsMatrix: (settings?.premiumMonthlySatsMatrix as Record<string, number> | null) || buildDefaultPremiumMonthlySatsMatrix(),
+      yearlySatsMatrix: (settings?.premiumYearlySatsMatrix as Record<string, number> | null) || buildDefaultPremiumYearlySatsMatrix(),
+    };
+  }
+
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -38,6 +81,7 @@ export class UserAccountService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
+        id: true,
         fullName: true,
         email: true,
         phone: true,
@@ -49,8 +93,13 @@ export class UserAccountService {
         referralCode: true,
         createdAt: true,
         totalXp: true,
+        balanceAvailable: true,
         premiumTier: true,
         premiumExpiresAt: true,
+        billingRecords: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
       },
     });
 
@@ -61,6 +110,7 @@ export class UserAccountService {
     const decrypted = decryptProfileFields(user);
     const isPremium = TierUtils.isPremiumActive(user as any);
     const activeTier = isPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const pricing = await this.getPremiumPricing();
 
     return {
       ...decrypted,
@@ -68,6 +118,90 @@ export class UserAccountService {
       isPremium,
       premiumTier: user.premiumTier,
       premiumExpiresAt: user.premiumExpiresAt,
+      balanceAvailable: user.balanceAvailable,
+      premiumPricing: pricing,
+      billingHistory: user.billingRecords,
+    };
+  }
+
+  static async upgradePremiumUsingSats(userId: string, data: { plan: PremiumTier; billingCycle: BillingCycle }) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        balanceAvailable: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const pricing = await this.getPremiumPricing();
+    const priceMap = data.billingCycle === BillingCycle.MONTHLY ? pricing.monthlySatsMatrix : pricing.yearlySatsMatrix;
+    const amountSats = Number(priceMap[data.plan] || 0);
+
+    if (amountSats <= 0) {
+      throw new Error('This tier is not available for sats upgrade right now.');
+    }
+
+    if (user.balanceAvailable < amountSats) {
+      throw new Error('Not enough sats available for this tier upgrade.');
+    }
+
+    const durationDays = data.billingCycle === BillingCycle.MONTHLY
+      ? PREMIUM_TIER_DURATION_DAYS[data.plan].monthly
+      : PREMIUM_TIER_DURATION_DAYS[data.plan].yearly;
+
+    const startsFrom = user.premiumExpiresAt && user.premiumExpiresAt > new Date() ? user.premiumExpiresAt : new Date();
+    const premiumExpiresAt = addDays(startsFrom, durationDays);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          balanceAvailable: { decrement: amountSats },
+          premiumTier: data.plan,
+          premiumExpiresAt,
+        },
+      });
+
+      await tx.ledger.create({
+        data: {
+          userId: user.id,
+          amountSats: -amountSats,
+          type: 'PENALTY',
+          description: `Premium upgrade using sats - ${data.plan} (${data.billingCycle})`,
+        },
+      });
+
+      await tx.billingRecord.create({
+        data: {
+          userId: user.id,
+          premiumTier: data.plan,
+          billingCycle: data.billingCycle,
+          billingSource: BillingSource.SATS_BALANCE,
+          amountSats,
+          premiumExpiresAt,
+        },
+      });
+    });
+
+    await NotificationService.notifyAdmins(
+      'Premium upgraded using sats',
+      `${user.fullName?.trim() || user.email} upgraded to ${data.plan} using ${amountSats} sats (${data.billingCycle}).`,
+      'SYSTEM_ALERT',
+      user.id,
+    );
+
+    return {
+      success: true,
+      message: `Successfully upgraded to ${data.plan} using sats.`,
+      profile: await this.getUserProfile(userId),
     };
   }
 
@@ -105,7 +239,12 @@ export class UserAccountService {
     });
 
     if (existingOpenRequest) {
-      throw new Error(`You have already sent a ${data.intent === 'UPGRADE' ? 'premium upgrade' : 'notify me'} request for ${data.plan}.`);
+      return {
+        success: true,
+        message: data.intent === 'UPGRADE'
+          ? 'Your upgrade interest is already on file. Our admin team will reach out to you manually.'
+          : 'You are already on the notify list for this plan.',
+      };
     }
 
     const request = await prisma.premiumRequest.create({

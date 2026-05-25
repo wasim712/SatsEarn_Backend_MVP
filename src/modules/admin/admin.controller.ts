@@ -11,6 +11,11 @@ export class AdminController {
   static async getCampaignById(req: Request, res: Response) { return adminCampaignHandlers.getCampaignById(req, res); }
   static async updateCampaign(req: Request, res: Response) { return adminCampaignHandlers.updateCampaign(req, res); }
   static async deleteCampaign(req: Request, res: Response) { return adminCampaignHandlers.deleteCampaign(req, res); }
+  static async createStandaloneTask(req: Request, res: Response) { return adminCampaignHandlers.createStandaloneTask(req, res); }
+  static async getAllStandaloneTasks(req: Request, res: Response) { return adminCampaignHandlers.getAllStandaloneTasks(req, res); }
+  static async getStandaloneTaskById(req: Request, res: Response) { return adminCampaignHandlers.getStandaloneTaskById(req, res); }
+  static async updateStandaloneTask(req: Request, res: Response) { return adminCampaignHandlers.updateStandaloneTask(req, res); }
+  static async deleteStandaloneTask(req: Request, res: Response) { return adminCampaignHandlers.deleteStandaloneTask(req, res); }
   static async addTaskToCampaign(req: Request, res: Response) { return adminCampaignHandlers.addTaskToCampaign(req, res); }
   static async getAllTasksForCampaign(req: Request, res: Response) { return adminCampaignHandlers.getAllTasksForCampaign(req, res); }
   static async getTaskById(req: Request, res: Response) { return adminCampaignHandlers.getTaskById(req, res); }

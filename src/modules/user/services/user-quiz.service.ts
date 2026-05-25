@@ -105,6 +105,7 @@ export class UserQuizService {
       explanation: question.explanation,
       options: question.options,
       order: question.order,
+      correctAnswer: question.correctAnswer,
     }));
 
     const existingAttempt = await prisma.quizAttempt.findUnique({

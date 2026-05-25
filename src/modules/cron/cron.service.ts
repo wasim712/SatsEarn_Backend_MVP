@@ -37,9 +37,32 @@ export class CronService {
       },
     });
 
+    const readyStandaloneSubmissions = await prisma.standaloneSubmission.findMany({
+      where: {
+        status: SubmissionStatus.PENDING_24H,
+        unlockAt: { lte: new Date() },
+      },
+      select: { id: true },
+    });
+
+    let standaloneCount = 0;
+    if (readyStandaloneSubmissions.length > 0) {
+      const standaloneResult = await prisma.standaloneSubmission.updateMany({
+        where: {
+          id: { in: readyStandaloneSubmissions.map((submission) => submission.id) },
+          status: SubmissionStatus.PENDING_24H,
+        },
+        data: {
+          status: SubmissionStatus.LOCKED_15D,
+          unlockAt: lockAt,
+        },
+      });
+      standaloneCount = standaloneResult.count;
+    }
+
     return {
       success: true,
-      message: `Moved ${result.count} submissions into 15-day lock.`,
+      message: `Moved ${result.count + standaloneCount} submissions into 15-day lock.`,
     };
   }
 
@@ -117,6 +140,64 @@ export class CronService {
         }
       }
       
+      unlockedCount++;
+    }
+
+    const readyStandaloneSubmissions = await prisma.standaloneSubmission.findMany({
+      where: {
+        status: SubmissionStatus.LOCKED_15D,
+        unlockAt: { lte: new Date() }
+      },
+      select: { id: true, userId: true }
+    });
+
+    for (const sub of readyStandaloneSubmissions) {
+      let satsUnlockedForSubmission = 0;
+
+      await prisma.$transaction(async (tx) => {
+        const ledgerEntry = await tx.ledger.findFirst({
+          where: {
+            referenceId: sub.id,
+            userId: sub.userId,
+            type: 'TASK_REWARD'
+          }
+        });
+
+        if (!ledgerEntry) return;
+
+        const satsToUnlock = ledgerEntry.amountSats;
+        satsUnlockedForSubmission = satsToUnlock;
+
+        await tx.standaloneSubmission.update({
+          where: { id: sub.id },
+          data: { status: SubmissionStatus.WITHDRAWABLE }
+        });
+
+        await tx.user.update({
+          where: { id: sub.userId },
+          data: {
+            balancePending: { decrement: satsToUnlock },
+            balanceAvailable: { increment: satsToUnlock }
+          }
+        });
+
+        totalSatsUnlocked += satsToUnlock;
+      });
+
+      if (satsUnlockedForSubmission > 0) {
+        try {
+          await NotificationService.notifyUser(
+            sub.userId,
+            'Funds Unlocked',
+            `${satsUnlockedForSubmission} Sats from your accepted standalone submission are now available in your wallet balance.`,
+            'SYSTEM_ALERT',
+            sub.id,
+          );
+        } catch (notifyError) {
+          console.error('Funds unlocked, but failed to send notification:', notifyError);
+        }
+      }
+
       unlockedCount++;
     }
 

@@ -46,6 +46,11 @@ router.patch('/campaigns/:id', validate(updateCampaignSchema), AdminController.u
 router.delete('/campaigns/:id', AdminController.deleteCampaign);
 router.get('/campaigns/:id', AdminController.getCampaignById);
 
+router.post('/tasks/standalone', validate(createTaskSchema), AdminController.createStandaloneTask);
+router.get('/tasks', AdminController.getAllStandaloneTasks);
+router.get('/tasks/:taskId', AdminController.getStandaloneTaskById);
+router.patch('/tasks/:taskId', validate(updateTaskSchema), AdminController.updateStandaloneTask);
+router.delete('/tasks/:taskId', AdminController.deleteStandaloneTask);
 router.post('/campaigns/:campaignId/tasks', validate(createTaskSchema), AdminController.addTaskToCampaign);
 router.get('/campaigns/:campaignId/tasks', AdminController.getAllTasksForCampaign);
 router.get('/campaigns/:campaignId/tasks/:taskId', AdminController.getTaskById);
