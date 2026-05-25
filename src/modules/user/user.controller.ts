@@ -15,7 +15,9 @@ export class UserController {
   static async getStandaloneTasks(req: Request, res: Response) { return userTaskHandlers.getStandaloneTasks(req, res); }
   static async getCampaignDetails(req: Request, res: Response) { return userTaskHandlers.getCampaignDetails(req, res); }
   static async getStandaloneTaskDetails(req: Request, res: Response) { return userTaskHandlers.getStandaloneTaskDetails(req, res); }
+  static async getStandaloneTaskStatus(req: Request, res: Response) { return userTaskHandlers.getStandaloneTaskStatus(req, res); }
   static async getTaskStatus(req: Request, res: Response) { return userTaskHandlers.getTaskStatus(req, res); }
+  static async submitStandaloneTaskProof(req: Request, res: Response) { return userTaskHandlers.submitStandaloneTaskProof(req, res); }
   static async submitTaskProof(req: Request, res: Response) { return userTaskHandlers.submitTaskProof(req, res); }
   static async deleteAccount(req: Request, res: Response) { return userAccountHandlers.deleteAccount(req, res); }
   static async getReferralDashboard(req: Request, res: Response) { return userTaskHandlers.getReferralDashboard(req, res); }

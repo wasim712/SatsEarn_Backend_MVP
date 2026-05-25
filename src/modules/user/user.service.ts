@@ -11,6 +11,7 @@ import { UserReferralService } from './services/user-referral.service';
 import { UserSubmissionService } from './services/user-submission.service';
 import { UserWithdrawalService } from './services/user-withdrawal.service';
 import { UserBugReportService } from './services/user-bug-report.service';
+import { StandaloneUserService } from '../standalone/standalone-user.service';
 
 export class UserService {
   static async claimSatWormReward(userId: string, payload: {
@@ -94,6 +95,10 @@ export class UserService {
 
   static async getTaskStatus(userId: string, taskId: string) {
     return await UserSubmissionService.getTaskStatus(userId, taskId);
+  }
+
+  static async getStandaloneTaskStatus(userId: string, taskId: string) {
+    return await StandaloneUserService.getTaskStatus(userId, taskId);
   }
 
   static async getProfile(userId: string) {
@@ -289,7 +294,7 @@ export class UserService {
   }
 
   static async getStandaloneTasks(userId: string) {
-    return await UserCampaignService.getStandaloneTasks(userId);
+    return await StandaloneUserService.getTasks(userId);
   }
 
   static async getCampaignDetails(userId: string, campaignId: string) {
@@ -297,11 +302,11 @@ export class UserService {
   }
 
   static async getStandaloneTaskDetails(userId: string, taskId: string) {
-    return await UserCampaignService.getStandaloneTaskDetails(userId, taskId);
+    return await StandaloneUserService.getTaskDetails(userId, taskId);
   }
 
   static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {
-    return await UserSubmissionService.submitTask(userId, taskId, proofData, clientIp);
+    return await StandaloneUserService.submitTask(userId, taskId, proofData, clientIp);
   }
 
   static async getReferralDashboard(userId: string) {

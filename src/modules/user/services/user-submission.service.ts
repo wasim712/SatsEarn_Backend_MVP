@@ -15,6 +15,46 @@ import {
 import { NotificationService } from '../../notifications/notification.service';
 import { AiVerificationService } from '../../verification/verification.service';
 
+const REFERRAL_ACTIVE_DAYS_REQUIRED = 10;
+const REFERRAL_ACTIVITY_WINDOW_DAYS = 30;
+
+async function getUserUniqueActiveDaysLast30Days(db: typeof prisma, userId: string) {
+  const windowStart = new Date(Date.now() - REFERRAL_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const [taskSubmissions, standaloneSubmissions, quizAttempts] = await Promise.all([
+    db.submission.findMany({
+      where: {
+        userId,
+        status: { not: SubmissionStatus.REJECTED },
+        submittedAt: { gte: windowStart },
+      },
+      select: { submittedAt: true },
+    }),
+    db.standaloneSubmission.findMany({
+      where: {
+        userId,
+        status: { not: SubmissionStatus.REJECTED },
+        submittedAt: { gte: windowStart },
+      },
+      select: { submittedAt: true },
+    }),
+    db.quizAttempt.findMany({
+      where: {
+        userId,
+        createdAt: { gte: windowStart },
+      },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  return new Set([
+    ...taskSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
+    ...standaloneSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
+    ...quizAttempts.map((item) => item.createdAt.toISOString().split('T')[0]),
+  ]).size;
+}
+
+
 export class UserSubmissionService {
   static async getTaskStatus(userId: string, taskId: string) {
     const submission = await prisma.submission.findUnique({
@@ -192,56 +232,61 @@ export class UserSubmissionService {
             const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
 
             if (referrer) {
-              const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
-              const referrerActiveTier = referrerHasPremium
-                ? referrer.premiumTier
-                : TierUtils.getFreeTier(referrer.totalXp);
-              const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
-              const configuredCommission = referrerActiveTier
-                ? tierReferralMatrix?.[String(referrerActiveTier)]
-                : undefined;
-              const commissionPercent = Number(
-                configuredCommission ?? settings.referralBonusPercent ?? 0,
-              );
-              let referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+              const referralActiveDays = await getUserUniqueActiveDaysLast30Days(tx as typeof prisma, userId);
+              const referralEligible = referralActiveDays >= REFERRAL_ACTIVE_DAYS_REQUIRED;
 
-              if (!referrerHasPremium) {
-                const freeTier = TierUtils.getFreeTier(referrer.totalXp);
-                const cap = TierUtils.getFreeTierReferralCap(freeTier);
+              if (referralEligible) {
+                const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
+                const referrerActiveTier = referrerHasPremium
+                  ? referrer.premiumTier
+                  : TierUtils.getFreeTier(referrer.totalXp);
+                const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
+                const configuredCommission = referrerActiveTier
+                  ? tierReferralMatrix?.[String(referrerActiveTier)]
+                  : undefined;
+                const commissionPercent = Number(
+                  configuredCommission ?? settings.referralBonusPercent ?? 0,
+                );
+                let referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
 
-                const referralLedgers = await tx.ledger.findMany({
-                  where: {
-                    userId: referrer.id,
-                    type: 'REFERRAL_BONUS',
-                  },
-                  select: { amountSats: true },
-                });
+                if (!referrerHasPremium) {
+                  const freeTier = TierUtils.getFreeTier(referrer.totalXp);
+                  const cap = TierUtils.getFreeTierReferralCap(freeTier);
 
-                const totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
-                const remainingSats = cap.maxSats - totalReferralSatsEarned;
+                  const referralLedgers = await tx.ledger.findMany({
+                    where: {
+                      userId: referrer.id,
+                      type: 'REFERRAL_BONUS',
+                    },
+                    select: { amountSats: true },
+                  });
 
-                if (remainingSats <= 0) {
-                  referralBonus = 0;
-                } else {
-                  referralBonus = Math.max(0, Math.min(referralBonus, remainingSats));
+                  const totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
+                  const remainingSats = cap.maxSats - totalReferralSatsEarned;
+
+                  if (remainingSats <= 0) {
+                    referralBonus = 0;
+                  } else {
+                    referralBonus = Math.max(0, Math.min(referralBonus, remainingSats));
+                  }
                 }
-              }
 
-              if (referralBonus > 0) {
-                await tx.user.update({
-                  where: { id: referrer.id },
-                  data: { balancePending: { increment: referralBonus } },
-                });
+                if (referralBonus > 0) {
+                  await tx.user.update({
+                    where: { id: referrer.id },
+                    data: { balancePending: { increment: referralBonus } },
+                  });
 
-                await tx.ledger.create({
-                  data: {
-                    userId: referrer.id,
-                    amountSats: referralBonus,
-                    type: 'REFERRAL_BONUS',
-                    description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}`,
-                    referenceId: submission.id,
-                  },
-                });
+                  await tx.ledger.create({
+                    data: {
+                      userId: referrer.id,
+                      amountSats: referralBonus,
+                      type: 'REFERRAL_BONUS',
+                      description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}`,
+                      referenceId: submission.id,
+                    },
+                  });
+                }
               }
             }
           }

@@ -55,8 +55,10 @@ export const createTaskSchema = z.object({
     proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
-    xpRewardOverride: z.number().int().min(0),
+    xpReward: z.number().int().min(0).optional(),
+    xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
+    tierRewardMatrix: z.record(z.string(), z.number()).optional(),
     tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
   })
 });
@@ -71,9 +73,12 @@ export const updateTaskSchema = z.object({
 
     targetUrl: z.string().url().optional().or(z.literal('')),
     requiredPlatform: z.string().optional(),
-    xpRewardOverride: z.number().int().min(0),
+    xpReward: z.number().int().min(0).optional(),
+    xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
-    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+    tierRewardMatrix: z.record(z.string(), z.number()).optional(),
+    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional(),
+    isActive: z.boolean().optional()
   })
 });
 // --- ANNOUNCEMENTS ---

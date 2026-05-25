@@ -42,6 +42,8 @@ router.get('/settings', async (_req, res) => {
 router.get('/campaigns', UserController.getCampaigns);
 router.get('/standalone-tasks', UserController.getStandaloneTasks);
 router.get('/standalone-tasks/:taskId', UserController.getStandaloneTaskDetails);
+router.get('/standalone-tasks/:taskId/status', UserController.getStandaloneTaskStatus);
+router.post('/standalone-tasks/:taskId/submit', upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitStandaloneTaskProof);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
 router.get('/tasks/:taskId/status', UserController.getTaskStatus);
 

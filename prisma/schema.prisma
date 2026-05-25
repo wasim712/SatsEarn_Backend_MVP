@@ -183,6 +183,7 @@ id               String   @id @default(uuid())
 
   // --- RELATIONS ---
   submissions      Submission[]
+  standaloneSubmissions StandaloneSubmission[]
   withdrawals      Withdrawal[]
   transactions     Ledger[]     
   quizAttempts     QuizAttempt[]
@@ -241,6 +242,47 @@ model PlatformSettings {
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
   updatedAt            DateTime @updatedAt
+}
+
+model StandaloneTask {
+  id               String        @id @default(uuid())
+  title            String
+  description      String
+  targetUrl        String?
+  proofType        ProofType     @default(SCREENSHOT)
+  requiredPlatform String        @default("NONE")
+  xpReward         Int           @default(0)
+  tierRewardMatrix Json
+  isActive         Boolean       @default(true)
+  submissions      StandaloneSubmission[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([isActive, createdAt])
+}
+
+model StandaloneSubmission {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  standaloneTaskId String
+  standaloneTask   StandaloneTask   @relation(fields: [standaloneTaskId], references: [id], onDelete: Cascade)
+  ipAddress        String?
+  screenshotUrl    String?
+  proofText        String?          @db.Text
+  imageHash        String?
+  ocrExtractedText String?          @db.Text
+  confidenceScore  Int              @default(0)
+  status           SubmissionStatus @default(PENDING_24H)
+  rejectionReason  String?
+  reviewedById     String?
+  submittedAt      DateTime         @default(now())
+  reverifyAt       DateTime?
+  unlockAt         DateTime?
+
+  @@unique([userId, standaloneTaskId])
+  @@index([status])
+  @@index([imageHash])
 }
 
 model BillingRecord {

@@ -28,11 +28,29 @@ export class UserReferralService {
             },
             submissions: {
               where: {
+                status: { not: 'REJECTED' },
                 submittedAt: {
                   gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
                 },
               },
               select: { submittedAt: true },
+            },
+            standaloneSubmissions: {
+              where: {
+                status: { not: 'REJECTED' },
+                submittedAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+              select: { submittedAt: true },
+            },
+            quizAttempts: {
+              where: {
+                createdAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+              select: { createdAt: true },
             },
           },
         },
@@ -52,9 +70,11 @@ export class UserReferralService {
     let inactiveCount = 0;
 
     const referralDetails = user.referrals.map((referral) => {
-      const uniqueActiveDays = new Set(
-        referral.submissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
-      ).size;
+      const uniqueActiveDays = new Set([
+        ...referral.submissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
+        ...referral.standaloneSubmissions.map((submission) => submission.submittedAt.toISOString().split('T')[0]),
+        ...referral.quizAttempts.map((attempt) => attempt.createdAt.toISOString().split('T')[0]),
+      ]).size;
 
       const isActive = uniqueActiveDays >= 10;
       if (isActive) activeCount++;
