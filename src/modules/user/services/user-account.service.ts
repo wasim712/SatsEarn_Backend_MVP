@@ -226,24 +226,22 @@ export class UserAccountService {
       ? user.premiumTier || 'UNKNOWN'
       : TierUtils.getFreeTier(user.totalXp);
 
-    const existingOpenRequest = await prisma.premiumRequest.findFirst({
+    const existingRequest = await prisma.premiumRequest.findFirst({
       where: {
         userId,
         plan: data.plan,
         intent: data.intent,
-        status: {
-          in: [PremiumRequestStatus.OPEN, PremiumRequestStatus.CONTACTED],
-        },
       },
-      select: { id: true },
+      select: { id: true, status: true },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (existingOpenRequest) {
+    if (existingRequest) {
       return {
         success: true,
         message: data.intent === 'UPGRADE'
-          ? 'Your upgrade interest is already on file. Our admin team will reach out to you manually.'
-          : 'You are already on the notify list for this plan.',
+          ? 'Your upgrade interest has already been submitted for this plan and cannot be sent again.'
+          : 'You have already joined the notify list for this plan.',
       };
     }
 
@@ -282,9 +280,6 @@ export class UserAccountService {
     return await prisma.premiumRequest.findMany({
       where: {
         userId,
-        status: {
-          in: [PremiumRequestStatus.OPEN, PremiumRequestStatus.CONTACTED],
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
