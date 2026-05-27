@@ -7,6 +7,8 @@ export const STREAK_MILESTONES: Record<number, number> = {
   365: 3650,
 };
 
+export const PREMIUM_STREAK_MILESTONES = new Set([90, 180, 365]);
+
 export function getStreakMilestones() {
   return Object.entries(STREAK_MILESTONES)
     .map(([days, rewardSats]) => ({ days: Number(days), rewardSats }))
@@ -30,6 +32,10 @@ export function normalizeUtcDay(date: Date) {
 
 export function getStreakMilestoneReward(day: number) {
   return STREAK_MILESTONES[day] || 0;
+}
+
+export function isPremiumStreakMilestone(day: number) {
+  return PREMIUM_STREAK_MILESTONES.has(day);
 }
 
 export function getNextStreakMilestone(lastClaimedMilestone: number) {

@@ -3,6 +3,7 @@ import {
   evaluateDailyActivityStreak,
   getNextStreakMilestone,
   getStreakMilestoneReward,
+  isPremiumStreakMilestone,
 } from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
 
@@ -229,7 +230,13 @@ export class UserQuizService {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { currentStreak: true, lastActivityAt: true, lastClaimedStreakMilestone: true },
+      select: {
+        currentStreak: true,
+        lastActivityAt: true,
+        lastClaimedStreakMilestone: true,
+        premiumTier: true,
+        premiumExpiresAt: true,
+      },
     });
     if (!user) throw new Error('User not found.');
 
@@ -240,7 +247,13 @@ export class UserQuizService {
     const finalRewardXp = Math.floor(exactEarnedXp);
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
-    const streakBonusSats = nextMilestone && streakEvaluation.nextStreak >= nextMilestone
+    const hasPremium = !!(user as any).premiumTier && !!(user as any).premiumExpiresAt && new Date((user as any).premiumExpiresAt) > new Date();
+    const streakMilestoneEligible = !!(
+      nextMilestone
+      && streakEvaluation.nextStreak >= nextMilestone
+      && (!isPremiumStreakMilestone(nextMilestone) || hasPremium)
+    );
+    const streakBonusSats = streakMilestoneEligible && nextMilestone
       ? getStreakMilestoneReward(nextMilestone)
       : 0;
 
