@@ -1,4 +1,4 @@
-import { SubmissionStatus, type User } from '@prisma/client';
+﻿import { CampaignDevice, SubmissionStatus, type User } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { getReferralBonusAmount, getReviewReleaseAt } from '../../utils/submission-flow.util';
@@ -12,6 +12,7 @@ import { NotificationService } from '../notifications/notification.service';
 
 const REFERRAL_ACTIVE_DAYS_REQUIRED = 10;
 const REFERRAL_ACTIVITY_WINDOW_DAYS = 30;
+const FREE_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'] as const;
 
 async function getUserUniqueActiveDaysLast30Days(userId: string) {
   const windowStart = new Date(Date.now() - REFERRAL_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -50,6 +51,14 @@ async function getUserUniqueActiveDaysLast30Days(userId: string) {
 }
 
 export const ALL_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER'] as const;
+const ALLOWED_STANDALONE_PLATFORMS: readonly CampaignDevice[] = ['NONE', 'DESKTOP', 'ANDROID', 'IOS'];
+
+export function normalizeStandaloneRequiredPlatform(input: unknown): CampaignDevice {
+  const normalized = String(input || 'NONE').trim().toUpperCase();
+  return ALLOWED_STANDALONE_PLATFORMS.includes(normalized as CampaignDevice)
+    ? (normalized as CampaignDevice)
+    : 'NONE';
+}
 
 export function normalizeTierRewardMatrix(input: unknown) {
   const source = (input || {}) as Record<string, number>;
@@ -57,6 +66,19 @@ export function normalizeTierRewardMatrix(input: unknown) {
     acc[tier] = Math.max(0, Number(source[tier] || 0));
     return acc;
   }, {});
+}
+
+export function sanitizeStandaloneTierRewardMatrix(input: unknown, isPremiumOnly: boolean) {
+  const matrix = normalizeTierRewardMatrix(input);
+  if (!isPremiumOnly) {
+    return matrix;
+  }
+
+  for (const tier of FREE_TIERS) {
+    matrix[tier] = 0;
+  }
+
+  return matrix;
 }
 
 export function getActiveTier(user: Pick<User, 'totalXp' | 'premiumTier' | 'premiumExpiresAt'>) {

@@ -1,4 +1,4 @@
-import { SubmissionStatus } from '@prisma/client';
+﻿import { SubmissionStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { AiVerificationService } from '../verification/verification.service';
@@ -13,7 +13,7 @@ export class StandaloneUserService {
   static async getTasks(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true },
+      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true, country: true },
     });
     if (!user) throw new Error('User not found');
 
@@ -29,20 +29,32 @@ export class StandaloneUserService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return tasks.map((task) => ({
-      ...task,
-      taskRewardSats: getStandaloneDisplayReward(task, user),
-      userSubmission: task.submissions[0] || null,
-      hasStarted: task.submissions.length > 0,
-      isCompleted: ['PENDING_24H', 'LOCKED_15D', 'WITHDRAWABLE', 'MANUAL_REVIEW'].includes(task.submissions[0]?.status || ''),
-      doubleRewardsActive: false,
-    }));
+    const freeTierOrder = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'];
+    const userFreeTier = TierUtils.getFreeTier(user.totalXp);
+    const userFreeTierIndex = freeTierOrder.indexOf(userFreeTier);
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+
+    return tasks
+      .filter((task) => {
+        if (task.targetCountries.length > 0 && !task.targetCountries.includes(user.country || 'IN')) return false;
+        if (task.isPremiumOnly) return hasPremium;
+        const requiredTierIndex = freeTierOrder.indexOf(task.requiredFreeTier);
+        return requiredTierIndex <= userFreeTierIndex || hasPremium;
+      })
+      .map((task) => ({
+        ...task,
+        taskRewardSats: getStandaloneDisplayReward(task, user),
+        userSubmission: task.submissions[0] || null,
+        hasStarted: task.submissions.length > 0,
+        isCompleted: ['PENDING_24H', 'LOCKED_15D', 'WITHDRAWABLE', 'MANUAL_REVIEW'].includes(task.submissions[0]?.status || ''),
+        doubleRewardsActive: false,
+      }));
   }
 
   static async getTaskDetails(userId: string, taskId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true },
+      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true, country: true },
     });
     if (!user) throw new Error('User not found');
 
@@ -57,6 +69,16 @@ export class StandaloneUserService {
       },
     });
     if (!task || !task.isActive) throw new Error('Standalone task not found');
+
+    const freeTierOrder = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'];
+    const userFreeTier = TierUtils.getFreeTier(user.totalXp);
+    const userFreeTierIndex = freeTierOrder.indexOf(userFreeTier);
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+    const requiredTierIndex = freeTierOrder.indexOf(task.requiredFreeTier);
+
+    if (task.targetCountries.length > 0 && !task.targetCountries.includes(user.country || 'IN')) throw new Error('Standalone task not available in your region');
+    if (task.isPremiumOnly && !hasPremium) throw new Error('This standalone task requires premium access');
+    if (!(requiredTierIndex <= userFreeTierIndex || hasPremium)) throw new Error('You do not meet the tier requirement for this standalone task');
 
     return {
       ...task,

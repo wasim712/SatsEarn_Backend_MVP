@@ -37,6 +37,7 @@ export const submitDailyQuizSchema = z.object({
       z.object({
         questionId: z.string().uuid("Invalid Question ID format"),
         answer: z.string().min(1, "Answer cannot be empty"),
+        attemptCount: z.number().int("Attempt count must be a whole number").min(1, "Attempt count must be at least 1"),
       })
     ).min(1, "You must submit at least one answer"),
   }),

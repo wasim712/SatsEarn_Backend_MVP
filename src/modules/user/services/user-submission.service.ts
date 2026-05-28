@@ -10,6 +10,7 @@ import {
   evaluateDailyActivityStreak,
   getNextStreakMilestone,
   getStreakMilestoneReward,
+  isPremiumStreakMilestone,
   isDoubleRewardActive,
 } from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
@@ -150,7 +151,12 @@ export class UserSubmissionService {
     const xpReward = applyDoubleReward(baseXpReward, isCampaignDoubleRewardsActive);
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
-    const streakBonusSats = nextMilestone && streakEvaluation.nextStreak >= nextMilestone
+    const streakMilestoneEligible = !!(
+      nextMilestone
+      && streakEvaluation.nextStreak >= nextMilestone
+      && (!isPremiumStreakMilestone(nextMilestone) || hasPremium)
+    );
+    const streakBonusSats = streakMilestoneEligible && nextMilestone
       ? getStreakMilestoneReward(nextMilestone)
       : 0;
 

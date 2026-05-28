@@ -233,11 +233,12 @@ model PlatformSettings {
   // The old global fallback
   referralBonusPercent Int      @default(5) 
   
-  // 🚀 NEW: The exact % commission based on the referrer's tier
+  // Ã°Å¸Å¡â‚¬ NEW: The exact % commission based on the referrer's tier
   tierReferralMatrix   Json?    
   tierMinWithdrawalMatrix Json?
   premiumMonthlySatsMatrix Json?
   premiumYearlySatsMatrix  Json?
+  userSidebarConfig     Json?
 
   baseXpPerTask        Int      @default(10)
   dailyStreakBonusXp   Int      @default(5)
@@ -245,18 +246,25 @@ model PlatformSettings {
 }
 
 model StandaloneTask {
-  id               String        @id @default(uuid())
-  title            String
-  description      String
-  targetUrl        String?
-  proofType        ProofType     @default(SCREENSHOT)
-  requiredPlatform String        @default("NONE")
-  xpReward         Int           @default(0)
-  tierRewardMatrix Json
-  isActive         Boolean       @default(true)
-  submissions      StandaloneSubmission[]
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                   String         @id @default(uuid())
+  title                String
+  description          String
+  category             TaskCategory   @default(SOCIAL)
+  coverImageUrl        String?
+  targetUrl            String?
+  targetCountries      String[]
+  isPremiumOnly        Boolean        @default(false)
+  requiredFreeTier     FreeTier       @default(BASIC)
+  requiredPlatform     CampaignDevice @default(NONE)
+  proofType            ProofType      @default(SCREENSHOT)
+  xpReward             Int            @default(0)
+  tierRewardMatrix     Json
+  doubleRewardsStartAt DateTime?
+  doubleRewardsEndAt   DateTime?
+  isActive             Boolean        @default(true)
+  submissions          StandaloneSubmission[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@index([isActive, createdAt])
 }
@@ -328,9 +336,8 @@ model Campaign {
   xpReward           Int          @default(0)
   doubleRewardsStartAt DateTime?
   doubleRewardsEndAt   DateTime?
-  
+  maxCompletions     Int
   totalCompletions   Int          @default(0)
-  maxCompletions     Int          
   
   isActive           Boolean      @default(true)
   
@@ -372,10 +379,10 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   ipAddress        String?
-  // 🚀 CHANGED: Made optional (Added '?') because text responses don't have images!
+  // Ã°Å¸Å¡â‚¬ CHANGED: Made optional (Added '?') because text responses don't have images!
   screenshotUrl    String?          
   
-  // 🚀 NEW: Where we store the URL or Text Response from the user
+  // Ã°Å¸Å¡â‚¬ NEW: Where we store the URL or Text Response from the user
   proofText        String?          @db.Text
   
   imageHash        String?          
@@ -581,3 +588,4 @@ model BugReport {
   @@index([userId, status])
   @@index([status, createdAt])
 }
+

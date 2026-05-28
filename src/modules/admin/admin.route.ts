@@ -20,6 +20,7 @@ import {
   updateAnnouncementSchema,
   updateBlogPostSchema,
   updateCampaignSchema,
+  updatePlatformSettingsSchema,
   updateDailyQuizSchema,
   updateFaqItemSchema,
   updatePremiumRequestSchema,
@@ -83,7 +84,7 @@ router.post('/withdrawals/:id/approve', AdminController.approveWithdrawal);
 router.post('/withdrawals/:id/reject', AdminController.rejectWithdrawal);
 
 router.get('/settings', AdminController.getPlatformSettings);
-router.put('/settings', AdminController.updatePlatformSettings);
+router.put('/settings', validate(updatePlatformSettingsSchema), AdminController.updatePlatformSettings);
 router.get('/cheat-user', AdminController.getCheatUser);
 router.put('/cheat-user', validate(updateCheatUserSchema), AdminController.updateCheatUser);
 router.get('/users', AdminController.getAllUsers);

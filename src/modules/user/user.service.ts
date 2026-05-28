@@ -373,7 +373,7 @@ export class UserService {
     return await UserQuizService.getTodayQuiz(userId);
   }
 
-  static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string }>) {
+  static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>) {
     return await UserQuizService.submitDailyQuiz(userId, userAnswers);
   }
 
