@@ -1,4 +1,4 @@
-import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
+﻿import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -29,7 +29,6 @@ export const updateCampaignSchema = z.object({
     coverImageUrl: z.string().url().optional().nullable(),
     targetUrl: z.string().url().optional(),
     socialHandleTarget: z.string().optional(),
-    maxCompletions: z.number().int().positive().optional(),
     targetCountries: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
     requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
@@ -52,14 +51,21 @@ export const createTaskSchema = z.object({
   body: z.object({
     title: z.string().min(3),
     description: z.string().min(5),
+    category: z.nativeEnum(TaskCategory).optional(),
+    coverImageUrl: z.string().url().optional().or(z.literal('')),
+    targetCountries: z.array(z.string()).optional(),
+    isPremiumOnly: z.boolean().optional(),
+    requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: z.string().optional(),
+    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
     tierRewardMatrix: z.record(z.string(), z.number()).optional(),
-    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional()
+    tierRewardMatrixOverride: z.record(z.string(), z.number()).optional(),
+    doubleRewardsStartAt: z.string().datetime().optional().nullable(),
+    doubleRewardsEndAt: z.string().datetime().optional().nullable(),
   })
 });
 
@@ -67,17 +73,21 @@ export const updateTaskSchema = z.object({
   body: z.object({
     title: z.string().min(3).optional(),
     description: z.string().min(5).optional(),
-
-
+    category: z.nativeEnum(TaskCategory).optional(),
+    coverImageUrl: z.string().url().optional().or(z.literal('')).nullable(),
+    targetCountries: z.array(z.string()).optional(),
+    isPremiumOnly: z.boolean().optional(),
+    requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional(),
-
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: z.string().optional(),
+    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
     tierRewardMatrix: z.record(z.string(), z.number()).optional(),
     tierRewardMatrixOverride: z.record(z.string(), z.number()).optional(),
+    doubleRewardsStartAt: z.string().datetime().optional().nullable(),
+    doubleRewardsEndAt: z.string().datetime().optional().nullable(),
     isActive: z.boolean().optional()
   })
 });
@@ -237,3 +247,36 @@ export const updatePremiumRequestSchema = z.object({
     adminNotes: z.string().max(1000).optional(),
   }).strict(),
 });
+
+
+export const updatePlatformSettingsSchema = z.object({
+  body: z.object({
+    welcomeBonusSats: z.number().int().min(0).optional(),
+    minWithdrawalSats: z.number().int().min(0).optional(),
+    securityLockDays: z.number().int().min(0).optional(),
+    referralBonusPercent: z.number().int().min(0).optional(),
+    baseXpPerTask: z.number().int().min(0).optional(),
+    dailyStreakBonusXp: z.number().int().min(0).optional(),
+    tierReferralMatrix: z.record(z.string(), z.number()).optional(),
+    tierMinWithdrawalMatrix: z.record(z.string(), z.number()).optional(),
+    premiumMonthlySatsMatrix: z.record(z.string(), z.number()).optional(),
+    premiumYearlySatsMatrix: z.record(z.string(), z.number()).optional(),
+    userSidebarConfig: z.object({
+      dashboard: z.boolean().optional(),
+      tasks: z.boolean().optional(),
+      standaloneTasks: z.boolean().optional(),
+      minigames: z.boolean().optional(),
+      bugBounty: z.boolean().optional(),
+      quiz: z.boolean().optional(),
+      referrals: z.boolean().optional(),
+      rewards: z.boolean().optional(),
+      leaderboard: z.boolean().optional(),
+      wallet: z.boolean().optional(),
+      settings: z.boolean().optional(),
+      help: z.boolean().optional(),
+      notifications: z.boolean().optional(),
+      profile: z.boolean().optional(),
+    }).optional(),
+  }),
+});
+

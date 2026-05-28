@@ -7,6 +7,14 @@ import {
 } from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
 
+function getQuizAttemptMultiplier(attemptCount: number) {
+  if (attemptCount <= 1) return 0.7;
+  if (attemptCount === 2) return 0.5;
+  if (attemptCount === 3) return 0.25;
+  if (attemptCount === 4) return 0.2;
+  return 0.1;
+}
+
 export class UserQuizService {
   static async submitQuizTask(userId: string, taskId: string, answers: string[]) {
     const task = await prisma.task.findUnique({
@@ -116,7 +124,7 @@ export class UserQuizService {
     const quizPayload = {
       id: quiz.id,
       title: quiz.title,
-      description: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
+      description: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
       rewardSats: quiz.rewardSats,
       xpReward: quiz.xpReward,
       questions: safeQuestions,
@@ -124,43 +132,71 @@ export class UserQuizService {
 
     if (existingAttempt) {
       const totalQuestions = quiz.questions.length;
-      const exactEarnedSats = totalQuestions > 0 ? (quiz.rewardSats / totalQuestions) * existingAttempt.score : 0;
-      const exactEarnedXp = totalQuestions > 0 ? (quiz.xpReward / totalQuestions) * existingAttempt.score : 0;
       const savedAnswers = Array.isArray(existingAttempt.answers)
-        ? existingAttempt.answers as Array<{ questionId: string; answer: string }>
+        ? existingAttempt.answers as Array<{ questionId: string; answer: string; attemptCount?: number }>
         : [];
-      const savedAnswerMap = new Map(savedAnswers.map((item) => [item.questionId, item.answer]));
+      const savedAnswerMap = new Map(savedAnswers.map((item) => [item.questionId, item]));
+      const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
+      const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
+
+      let computedRewardSats = 0;
+      let computedRewardXp = 0;
+      let totalAttempts = 0;
+
       const review = quiz.questions
         .slice()
         .sort((a, b) => a.order - b.order)
         .map((question) => {
-          const selectedAnswer = savedAnswerMap.get(question.id) || '';
+          const savedAnswer = savedAnswerMap.get(question.id);
+          const selectedAnswer = savedAnswer?.answer || '';
           const correctAnswer = question.correctAnswer;
+          const attemptCount = Math.max(1, savedAnswer?.attemptCount || 1);
+          totalAttempts += attemptCount;
+
+          const isCorrect = selectedAnswer === correctAnswer;
+          const multiplier = getQuizAttemptMultiplier(attemptCount);
+          const rewardAwarded = isCorrect ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
+          const xpAwarded = isCorrect ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+
+          computedRewardSats += rewardAwarded;
+          computedRewardXp += xpAwarded;
+
           return {
             questionId: question.id,
             questionText: question.questionText,
             explanation: question.explanation,
             selectedAnswer,
             correctAnswer,
-            isCorrect: selectedAnswer === correctAnswer,
+            isCorrect,
+            attemptCount,
+            rewardAwarded,
+            xpAwarded,
             options: question.options,
             order: question.order,
           };
         });
+
+      const fallbackRewardSats = totalQuestions > 0 ? Math.floor((quiz.rewardSats / totalQuestions) * existingAttempt.score) : 0;
+      const fallbackRewardXp = totalQuestions > 0 ? Math.floor((quiz.xpReward / totalQuestions) * existingAttempt.score) : 0;
+      const rewardEarned = savedAnswers.length > 0 ? computedRewardSats : fallbackRewardSats;
+      const xpEarned = savedAnswers.length > 0 ? computedRewardXp : fallbackRewardXp;
 
       return {
         status: 'submitted' as const,
         quiz: quizPayload,
         result: {
           message: existingAttempt.passed
-            ? `Perfect score! You earned the full ${Math.floor(exactEarnedSats)} Sats.`
-            : `Good job! You got ${existingAttempt.score}/${totalQuestions} correct and earned a partial reward of ${Math.floor(exactEarnedSats)} Sats.`,
+            ? `Quiz completed! You earned ${rewardEarned} sats based on your answer attempts.`
+            : `Quiz submitted. You earned ${rewardEarned} sats based on your answer attempts.`,
           passed: existingAttempt.passed,
           score: existingAttempt.score,
-          rewardEarned: Math.floor(exactEarnedSats),
-          xpEarned: Math.floor(exactEarnedXp),
+          rewardEarned,
+          xpEarned,
           streakBonusSats: 0,
           totalQuestions,
+          maxRewardSats: quiz.rewardSats,
+          maxXpReward: quiz.xpReward,
+          totalAttempts,
           quizTitle: quiz.title,
           quizDescription: quizPayload.description,
           submittedAt: existingAttempt.createdAt,
@@ -177,7 +213,7 @@ export class UserQuizService {
 
   static async submitDailyQuiz(
     userId: string,
-    userAnswers: Array<{ questionId: string; answer: string }>,
+    userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
   ) {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
@@ -216,17 +252,30 @@ export class UserQuizService {
       }
     }
 
-    let score = 0;
     const totalQuestions = quiz.questions.length;
     const answerKey = new Map(quiz.questions.map((question) => [question.id, question.correctAnswer]));
-    const submittedAnswerMap = new Map(userAnswers.map((submission) => [submission.questionId, submission.answer]));
+    const submittedAnswerMap = new Map(userAnswers.map((submission) => [submission.questionId, submission]));
+    const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
+    const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
+    let totalAttempts = 0;
+    let computedRewardSats = 0;
+    let computedRewardXp = 0;
 
     for (const submission of userAnswers) {
       const correctAnswer = answerKey.get(submission.questionId);
-      if (correctAnswer && correctAnswer === submission.answer) {
-        score++;
+      if (!correctAnswer || correctAnswer !== submission.answer) {
+        throw new Error('Submit only after solving every question correctly.');
       }
+
+      const attemptCount = Math.max(1, submission.attemptCount || 1);
+      totalAttempts += attemptCount;
+
+      const multiplier = getQuizAttemptMultiplier(attemptCount);
+      computedRewardSats += Math.floor(baseSatsPerQuestion * multiplier);
+      computedRewardXp += Math.floor(baseXpPerQuestion * multiplier);
     }
+
+    const score = totalQuestions;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -241,10 +290,8 @@ export class UserQuizService {
     if (!user) throw new Error('User not found.');
 
     const passed = score === totalQuestions;
-    const exactEarnedSats = (quiz.rewardSats / totalQuestions) * score;
-    const finalRewardSats = Math.floor(exactEarnedSats);
-    const exactEarnedXp = totalQuestions > 0 ? (quiz.xpReward / totalQuestions) * score : 0;
-    const finalRewardXp = Math.floor(exactEarnedXp);
+    const finalRewardSats = computedRewardSats;
+    const finalRewardXp = computedRewardXp;
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
     const hasPremium = !!(user as any).premiumTier && !!(user as any).premiumExpiresAt && new Date((user as any).premiumExpiresAt) > new Date();
@@ -271,8 +318,14 @@ export class UserQuizService {
       const review = quiz.questions
         .sort((a, b) => a.order - b.order)
         .map((question) => {
-          const selectedAnswer = submittedAnswerMap.get(question.id) || '';
+          const submittedAnswer = submittedAnswerMap.get(question.id);
+          const selectedAnswer = submittedAnswer?.answer || '';
           const correctAnswer = question.correctAnswer;
+          const attemptCount = Math.max(1, submittedAnswer?.attemptCount || 1);
+          const multiplier = getQuizAttemptMultiplier(attemptCount);
+          const rewardAwarded = selectedAnswer === correctAnswer ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
+          const xpAwarded = selectedAnswer === correctAnswer ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+
           return {
             questionId: question.id,
             questionText: question.questionText,
@@ -280,6 +333,9 @@ export class UserQuizService {
             selectedAnswer,
             correctAnswer,
             isCorrect: selectedAnswer === correctAnswer,
+            attemptCount,
+            rewardAwarded,
+            xpAwarded,
             options: question.options,
             order: question.order,
           };
@@ -299,8 +355,11 @@ export class UserQuizService {
           passed: false,
           score,
           totalQuestions,
+          maxRewardSats: quiz.rewardSats,
+          maxXpReward: quiz.xpReward,
+          totalAttempts,
           quizTitle: quiz.title,
-          quizDescription: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
+          quizDescription: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
           rewardEarned: 0,
           xpEarned: 0,
           streakBonusSats: 0,
@@ -355,14 +414,15 @@ export class UserQuizService {
       }
 
       return {
-        message: passed
-          ? `Perfect score! You earned the full ${finalRewardSats} Sats.`
-          : `Good job! You got ${score}/${totalQuestions} correct and earned a partial reward of ${finalRewardSats} Sats.`,
+        message: `Quiz completed! You earned ${finalRewardSats} sats after ${totalAttempts} total tries across ${totalQuestions} questions.`,
         passed,
         score,
         totalQuestions,
+        maxRewardSats: quiz.rewardSats,
+        maxXpReward: quiz.xpReward,
+        totalAttempts,
         quizTitle: quiz.title,
-        quizDescription: 'Answer all questions to earn today\'s reward. Your payout is based on how many answers you get correct.',
+        quizDescription: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
         rewardEarned: finalRewardSats,
         xpEarned: finalRewardXp,
         streakBonusSats,

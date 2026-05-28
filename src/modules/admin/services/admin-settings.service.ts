@@ -1,5 +1,22 @@
 import { prisma } from '../../../db/prisma.client';
 
+const DEFAULT_USER_SIDEBAR_CONFIG = {
+  dashboard: true,
+  tasks: true,
+  standaloneTasks: true,
+  minigames: true,
+  bugBounty: true,
+  quiz: true,
+  referrals: true,
+  rewards: true,
+  leaderboard: true,
+  wallet: true,
+  settings: true,
+  help: true,
+  notifications: true,
+  profile: true,
+};
+
 const DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX = {
   PLATINUM: 6499,
   DIAMOND: 8999,
@@ -29,28 +46,54 @@ export class AdminSettingsService {
           },
           premiumMonthlySatsMatrix: DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX,
           premiumYearlySatsMatrix: DEFAULT_PREMIUM_YEARLY_SATS_MATRIX,
+          userSidebarConfig: DEFAULT_USER_SIDEBAR_CONFIG,
         },
       });
     }
 
-    if (!settings.premiumMonthlySatsMatrix || !settings.premiumYearlySatsMatrix) {
+    if (!settings.premiumMonthlySatsMatrix || !settings.premiumYearlySatsMatrix || !settings.userSidebarConfig) {
       settings = await prisma.platformSettings.update({
         where: { id: settings.id },
         data: {
           premiumMonthlySatsMatrix: settings.premiumMonthlySatsMatrix || DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX,
           premiumYearlySatsMatrix: settings.premiumYearlySatsMatrix || DEFAULT_PREMIUM_YEARLY_SATS_MATRIX,
+          userSidebarConfig: settings.userSidebarConfig || DEFAULT_USER_SIDEBAR_CONFIG,
         },
       });
     }
 
-    return settings;
+    return {
+      ...settings,
+      userSidebarConfig: {
+        ...DEFAULT_USER_SIDEBAR_CONFIG,
+        ...((settings.userSidebarConfig || {}) as Record<string, boolean>),
+      },
+    };
   }
 
   static async updateGamificationSettings(rawData: any) {
     const existing = await this.getGamificationSettings();
-    return await prisma.platformSettings.update({
+    const normalizedSidebarConfig = rawData.userSidebarConfig
+      ? {
+          ...DEFAULT_USER_SIDEBAR_CONFIG,
+          ...(rawData.userSidebarConfig as Record<string, boolean>),
+        }
+      : undefined;
+
+    const updated = await prisma.platformSettings.update({
       where: { id: existing.id },
-      data: rawData,
+      data: {
+        ...rawData,
+        ...(normalizedSidebarConfig ? { userSidebarConfig: normalizedSidebarConfig } : {}),
+      },
     });
+
+    return {
+      ...updated,
+      userSidebarConfig: {
+        ...DEFAULT_USER_SIDEBAR_CONFIG,
+        ...((updated.userSidebarConfig || {}) as Record<string, boolean>),
+      },
+    };
   }
 }

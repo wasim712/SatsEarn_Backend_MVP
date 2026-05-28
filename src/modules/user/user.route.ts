@@ -37,7 +37,29 @@ router.delete('/account', UserController.deleteAccount);
 
 router.get('/settings', async (_req, res) => {
   const settings = await prisma.platformSettings.findFirst();
-  res.json(settings || {});
+  const defaultSidebarConfig = {
+    dashboard: true,
+    tasks: true,
+    standaloneTasks: true,
+    minigames: true,
+    bugBounty: true,
+    quiz: true,
+    referrals: true,
+    rewards: true,
+    leaderboard: true,
+    wallet: true,
+    settings: true,
+    help: true,
+    notifications: true,
+    profile: true,
+  };
+
+  res.json({
+    userSidebarConfig: {
+      ...defaultSidebarConfig,
+      ...(((settings?.userSidebarConfig as Record<string, boolean> | null) || {})),
+    },
+  });
 });
 router.get('/campaigns', UserController.getCampaigns);
 router.get('/standalone-tasks', UserController.getStandaloneTasks);
