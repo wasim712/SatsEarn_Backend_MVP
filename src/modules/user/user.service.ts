@@ -373,6 +373,10 @@ export class UserService {
     return await UserQuizService.getTodayQuiz(userId);
   }
 
+  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string) {
+    return await UserQuizService.submitDailyQuizAnswer(userId, questionId, answer);
+  }
+
   static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>) {
     return await UserQuizService.submitDailyQuiz(userId, userAnswers);
   }
@@ -409,3 +413,5 @@ export class UserService {
     return await UserBugReportService.getBugBountyStats();
   }
 }
+
+
