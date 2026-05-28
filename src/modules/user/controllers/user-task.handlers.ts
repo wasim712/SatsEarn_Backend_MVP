@@ -142,8 +142,13 @@ export const userTaskHandlers = {
     try { res.status(200).json(await UserService.getTodayQuiz(req.user!.id)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
+  async submitTodayQuizAnswer(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.submitDailyQuizAnswer(req.user!.id, req.body.questionId, req.body.answer)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async submitTodayQuiz(req: Request, res: Response) {
     try { res.status(200).json(await UserService.submitDailyQuiz(req.user!.id, req.body.answers)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
 };
+

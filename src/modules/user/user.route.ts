@@ -12,6 +12,7 @@ import {
   premiumSatsUpgradeSchema,
   requestWithdrawalSchema,
   submitBugReportSchema,
+  submitDailyQuizAnswerSchema,
   submitDailyQuizSchema,
   submitQuizSchema,
   updateProfileSchema,
@@ -54,7 +55,24 @@ router.get('/settings', async (_req, res) => {
     profile: true,
   };
 
+  const defaultTierMinWithdrawalMatrix = {
+    BASIC: 25000,
+    COPPER: 25000,
+    BRONZE: 25000,
+    SILVER: 25000,
+    GOLD: 25000,
+    PLATINUM: 25000,
+    DIAMOND: 25000,
+    CROWN: 25000,
+    ELITE: 25000,
+    FOUNDER: 25000,
+  };
+
   res.json({
+    tierMinWithdrawalMatrix: {
+      ...defaultTierMinWithdrawalMatrix,
+      ...(((settings?.tierMinWithdrawalMatrix as Record<string, number> | null) || {})),
+    },
     userSidebarConfig: {
       ...defaultSidebarConfig,
       ...(((settings?.userSidebarConfig as Record<string, boolean> | null) || {})),
@@ -85,6 +103,7 @@ router.post('/bug-reports', upload.single('screenshot'), decryptObfuscatedMultip
 router.post('/streak/claim', UserController.claimStreak);
 router.post('/minigames/sat-worm/claim', validate(claimSatWormRewardSchema), UserController.claimSatWormReward);
 router.get('/quiz/today', UserController.getTodayQuiz);
+router.post('/quiz/today/answer', validate(submitDailyQuizAnswerSchema), UserController.submitTodayQuizAnswer);
 router.post('/quiz/today/submit', validate(submitDailyQuizSchema), UserController.submitTodayQuiz);
 
 router.get('/withdrawals', UserController.getWithdrawals);

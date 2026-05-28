@@ -7,12 +7,158 @@ import {
 } from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
 
+type PersistedQuizAnswer = {
+  questionId: string;
+  answer: string;
+  attemptCount: number;
+  wrongAnswers?: string[];
+  isCorrect?: boolean;
+};
+
+type QuizQuestionEntity = {
+  id: string;
+  questionText: string;
+  explanation: string | null;
+  options: string[];
+  correctAnswer: string;
+  order: number;
+};
+
 function getQuizAttemptMultiplier(attemptCount: number) {
   if (attemptCount <= 1) return 0.7;
   if (attemptCount === 2) return 0.5;
   if (attemptCount === 3) return 0.25;
   if (attemptCount === 4) return 0.2;
   return 0.1;
+}
+
+function getQuizDateRange() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  return { today, tomorrow };
+}
+
+function normalizePersistedAnswers(rawAnswers: unknown): PersistedQuizAnswer[] {
+  if (!Array.isArray(rawAnswers)) return [];
+
+  const normalized: PersistedQuizAnswer[] = [];
+
+  for (const item of rawAnswers) {
+    if (!item || typeof item !== 'object') continue;
+    const entry = item as Record<string, unknown>;
+    const questionId = typeof entry.questionId === 'string' ? entry.questionId : '';
+    if (!questionId) continue;
+
+    const answer = typeof entry.answer === 'string' ? entry.answer : '';
+    const attemptCount = typeof entry.attemptCount === 'number' && Number.isFinite(entry.attemptCount)
+      ? Math.max(0, Math.floor(entry.attemptCount))
+      : 0;
+    const wrongAnswers = Array.isArray(entry.wrongAnswers)
+      ? entry.wrongAnswers.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      : [];
+    const isCorrect = typeof entry.isCorrect === 'boolean' ? entry.isCorrect : undefined;
+
+    normalized.push({
+      questionId,
+      answer,
+      attemptCount,
+      wrongAnswers,
+      isCorrect,
+    });
+  }
+
+  return normalized;
+}
+
+function buildQuizPayload(
+  quiz: { id: string; title: string; rewardSats: number; xpReward: number; questions: QuizQuestionEntity[] },
+) {
+  return {
+    id: quiz.id,
+    title: quiz.title,
+    description: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
+    rewardSats: quiz.rewardSats,
+    xpReward: quiz.xpReward,
+    questions: quiz.questions.map((question) => ({
+      id: question.id,
+      questionText: question.questionText,
+      explanation: question.explanation,
+      options: question.options,
+      order: question.order,
+      correctAnswer: question.correctAnswer,
+    })),
+  };
+}
+
+function buildInProgressResult(
+  quiz: { title: string; rewardSats: number; xpReward: number; questions: QuizQuestionEntity[] },
+  persistedAnswers: PersistedQuizAnswer[],
+) {
+  const totalQuestions = quiz.questions.length;
+  const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
+  const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
+  const answerMap = new Map(persistedAnswers.map((item) => [item.questionId, item]));
+
+  let rewardEarned = 0;
+  let xpEarned = 0;
+  let totalAttempts = 0;
+  let solvedCount = 0;
+
+  const review = quiz.questions
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((question) => {
+      const savedAnswer = answerMap.get(question.id);
+      const selectedAnswer = savedAnswer?.answer || '';
+      const wrongAnswers = savedAnswer?.wrongAnswers || [];
+      const attemptCount = Math.max(savedAnswer?.attemptCount || wrongAnswers.length || 0, wrongAnswers.length);
+      const isCorrect = selectedAnswer === question.correctAnswer;
+      const multiplier = getQuizAttemptMultiplier(Math.max(1, attemptCount || 1));
+      const questionReward = isCorrect ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
+      const questionXp = isCorrect ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+
+      totalAttempts += attemptCount;
+      if (isCorrect) {
+        solvedCount += 1;
+        rewardEarned += questionReward;
+        xpEarned += questionXp;
+      }
+
+      return {
+        questionId: question.id,
+        questionText: question.questionText,
+        explanation: question.explanation,
+        selectedAnswer,
+        correctAnswer: question.correctAnswer,
+        isCorrect,
+        attemptCount: Math.max(1, attemptCount || 1),
+        rewardAwarded: questionReward,
+        xpAwarded: questionXp,
+        options: question.options,
+        order: question.order,
+        wrongAnswers,
+      };
+    });
+
+  return {
+    message: solvedCount === totalQuestions
+      ? `Quiz solved! Finalizing your reward now.`
+      : `Progress saved. ${solvedCount}/${totalQuestions} questions solved so far.`,
+    passed: solvedCount === totalQuestions,
+    score: solvedCount,
+    rewardEarned,
+    xpEarned,
+    streakBonusSats: 0,
+    totalQuestions,
+    maxRewardSats: quiz.rewardSats,
+    maxXpReward: quiz.xpReward,
+    totalAttempts,
+    quizTitle: quiz.title,
+    quizDescription: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
+    review,
+  };
 }
 
 export class UserQuizService {
@@ -88,10 +234,7 @@ export class UserQuizService {
   }
 
   static async getTodayQuiz(userId: string) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const { today, tomorrow } = getQuizDateRange();
 
     const quiz = await prisma.dailyQuiz.findFirst({
       where: {
@@ -108,106 +251,147 @@ export class UserQuizService {
       throw new Error('There is no active quiz for today. Check back tomorrow!');
     }
 
-    const safeQuestions = quiz.questions.map((question) => ({
-      id: question.id,
-      questionText: question.questionText,
-      explanation: question.explanation,
-      options: question.options,
-      order: question.order,
-      correctAnswer: question.correctAnswer,
-    }));
+    const quizPayload = buildQuizPayload(quiz as any);
+    const existingAttempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
+    });
+
+    if (!existingAttempt) {
+      return {
+        status: 'available' as const,
+        quiz: quizPayload,
+      };
+    }
+
+    const savedAnswers = normalizePersistedAnswers(existingAttempt.answers);
+    const inProgressResult = buildInProgressResult(quiz as any, savedAnswers);
+    const isCompleted = existingAttempt.passed && existingAttempt.score >= quiz.questions.length;
+
+    return {
+      status: isCompleted ? 'submitted' as const : 'available' as const,
+      quiz: quizPayload,
+      result: {
+        ...inProgressResult,
+        message: isCompleted
+          ? `Quiz completed! You earned ${inProgressResult.rewardEarned} sats based on your answer attempts.`
+          : inProgressResult.message,
+        submittedAt: existingAttempt.createdAt,
+      },
+    };
+  }
+
+  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string) {
+    const { today, tomorrow } = getQuizDateRange();
+
+    const quiz = await prisma.dailyQuiz.findFirst({
+      where: {
+        isActive: true,
+        date: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: { questions: { orderBy: { order: 'asc' } } },
+    });
+
+    if (!quiz) throw new Error('Quiz not found or has expired.');
+
+    const question = quiz.questions.find((item) => item.id === questionId);
+    if (!question) throw new Error('Invalid question selected.');
 
     const existingAttempt = await prisma.quizAttempt.findUnique({
       where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
     });
 
-    const quizPayload = {
-      id: quiz.id,
-      title: quiz.title,
-      description: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
-      rewardSats: quiz.rewardSats,
-      xpReward: quiz.xpReward,
-      questions: safeQuestions,
+    if (existingAttempt?.passed && existingAttempt.score >= quiz.questions.length) {
+      throw new Error("You have already completed today's quiz.");
+    }
+
+    const persistedAnswers = normalizePersistedAnswers(existingAttempt?.answers);
+    const answerMap = new Map(persistedAnswers.map((item) => [item.questionId, item]));
+    const current = answerMap.get(questionId) || {
+      questionId,
+      answer: '',
+      attemptCount: 0,
+      wrongAnswers: [],
+      isCorrect: false,
     };
 
-    if (existingAttempt) {
-      const totalQuestions = quiz.questions.length;
-      const savedAnswers = Array.isArray(existingAttempt.answers)
-        ? existingAttempt.answers as Array<{ questionId: string; answer: string; attemptCount?: number }>
-        : [];
-      const savedAnswerMap = new Map(savedAnswers.map((item) => [item.questionId, item]));
-      const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
-      const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
+    if (current.isCorrect || current.answer === question.correctAnswer) {
+      throw new Error('This question is already solved.');
+    }
 
-      let computedRewardSats = 0;
-      let computedRewardXp = 0;
-      let totalAttempts = 0;
+    const wrongAnswers = [...(current.wrongAnswers || [])];
+    if (wrongAnswers.includes(answer)) {
+      throw new Error('You have already tried this option. Choose a different one.');
+    }
 
-      const review = quiz.questions
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map((question) => {
-          const savedAnswer = savedAnswerMap.get(question.id);
-          const selectedAnswer = savedAnswer?.answer || '';
-          const correctAnswer = question.correctAnswer;
-          const attemptCount = Math.max(1, savedAnswer?.attemptCount || 1);
-          totalAttempts += attemptCount;
+    const nextAttemptCount = (current.attemptCount || 0) + 1;
+    const isCorrect = answer === question.correctAnswer;
 
-          const isCorrect = selectedAnswer === correctAnswer;
-          const multiplier = getQuizAttemptMultiplier(attemptCount);
-          const rewardAwarded = isCorrect ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
-          const xpAwarded = isCorrect ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+    const updatedEntry: PersistedQuizAnswer = {
+      questionId,
+      answer: isCorrect ? answer : current.answer || '',
+      attemptCount: nextAttemptCount,
+      wrongAnswers: isCorrect ? wrongAnswers : [...wrongAnswers, answer],
+      isCorrect,
+    };
 
-          computedRewardSats += rewardAwarded;
-          computedRewardXp += xpAwarded;
+    answerMap.set(questionId, updatedEntry);
+    const updatedAnswers = quiz.questions
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((item) => answerMap.get(item.id))
+      .filter((item): item is PersistedQuizAnswer => Boolean(item));
 
-          return {
-            questionId: question.id,
-            questionText: question.questionText,
-            explanation: question.explanation,
-            selectedAnswer,
-            correctAnswer,
-            isCorrect,
-            attemptCount,
-            rewardAwarded,
-            xpAwarded,
-            options: question.options,
-            order: question.order,
-          };
-        });
+    if (!existingAttempt) {
+      await prisma.quizAttempt.create({
+        data: {
+          userId,
+          dailyQuizId: quiz.id,
+          answers: updatedAnswers,
+          score: 0,
+          passed: false,
+        },
+      });
+    } else {
+      await prisma.quizAttempt.update({
+        where: { id: existingAttempt.id },
+        data: {
+          answers: updatedAnswers,
+          score: updatedAnswers.filter((item) => item.isCorrect).length,
+          passed: updatedAnswers.filter((item) => item.isCorrect).length === quiz.questions.length,
+        },
+      });
+    }
 
-      const fallbackRewardSats = totalQuestions > 0 ? Math.floor((quiz.rewardSats / totalQuestions) * existingAttempt.score) : 0;
-      const fallbackRewardXp = totalQuestions > 0 ? Math.floor((quiz.xpReward / totalQuestions) * existingAttempt.score) : 0;
-      const rewardEarned = savedAnswers.length > 0 ? computedRewardSats : fallbackRewardSats;
-      const xpEarned = savedAnswers.length > 0 ? computedRewardXp : fallbackRewardXp;
+    const solvedCount = updatedAnswers.filter((item) => item.isCorrect).length;
+    const isQuizComplete = solvedCount === quiz.questions.length;
 
+    if (isQuizComplete) {
       return {
         status: 'submitted' as const,
-        quiz: quizPayload,
-        result: {
-          message: existingAttempt.passed
-            ? `Quiz completed! You earned ${rewardEarned} sats based on your answer attempts.`
-            : `Quiz submitted. You earned ${rewardEarned} sats based on your answer attempts.`,
-          passed: existingAttempt.passed,
-          score: existingAttempt.score,
-          rewardEarned,
-          xpEarned,
-          streakBonusSats: 0,
-          totalQuestions,
-          maxRewardSats: quiz.rewardSats,
-          maxXpReward: quiz.xpReward,
-          totalAttempts,
-          quizTitle: quiz.title,
-          quizDescription: quizPayload.description,
-          submittedAt: existingAttempt.createdAt,
-          review,
-        },
+        questionId,
+        isCorrect: true,
+        result: await this.finalizeDailyQuiz(userId, quiz.id, updatedAnswers),
       };
     }
 
     return {
-      status: 'available' as const,
-      quiz: quizPayload,
+      status: 'in_progress' as const,
+      questionId,
+      isCorrect,
+      attemptCount: nextAttemptCount,
+      wrongAnswers: updatedEntry.wrongAnswers || [],
+      selectedAnswer: isCorrect ? answer : '',
+      message: isCorrect
+        ? `Correct on try ${nextAttemptCount}.`
+        : `Wrong answer. Try a different option. Attempt ${nextAttemptCount} saved.`,
+      progress: {
+        solvedQuestions: solvedCount,
+        totalQuestions: quiz.questions.length,
+      },
+      result: buildInProgressResult(quiz as any, updatedAnswers),
     };
   }
 
@@ -215,10 +399,7 @@ export class UserQuizService {
     userId: string,
     userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
   ) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const { today, tomorrow } = getQuizDateRange();
 
     const quiz = await prisma.dailyQuiz.findFirst({
       where: {
@@ -232,17 +413,23 @@ export class UserQuizService {
     });
 
     if (!quiz) throw new Error('Quiz not found or has expired.');
+    return this.finalizeDailyQuiz(userId, quiz.id, userAnswers);
+  }
 
-    const existingAttempt = await prisma.quizAttempt.findUnique({
-      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
+  private static async finalizeDailyQuiz(
+    userId: string,
+    dailyQuizId: string,
+    userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
+  ) {
+    const quiz = await prisma.dailyQuiz.findUnique({
+      where: { id: dailyQuizId },
+      include: { questions: true },
     });
 
-    if (existingAttempt) {
-      throw new Error("You have already submitted answers for today's quiz.");
-    }
+    if (!quiz) throw new Error('Quiz not found or has expired.');
 
     if (userAnswers.length !== quiz.questions.length) {
-      throw new Error(`You must submit exactly ${quiz.questions.length} answers.`);
+      throw new Error(`You must solve all ${quiz.questions.length} questions.`);
     }
 
     const validQuestionIds = new Set(quiz.questions.map((question) => question.id));
@@ -304,16 +491,29 @@ export class UserQuizService {
       ? getStreakMilestoneReward(nextMilestone)
       : 0;
 
+    const existingAttempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
+    });
+
     return await prisma.$transaction(async (tx) => {
-      const attempt = await tx.quizAttempt.create({
-        data: {
-          userId,
-          dailyQuizId: quiz.id,
-          answers: userAnswers,
-          score,
-          passed,
-        },
-      });
+      const attempt = existingAttempt
+        ? await tx.quizAttempt.update({
+            where: { id: existingAttempt.id },
+            data: {
+              answers: userAnswers,
+              score,
+              passed,
+            },
+          })
+        : await tx.quizAttempt.create({
+            data: {
+              userId,
+              dailyQuizId: quiz.id,
+              answers: userAnswers,
+              score,
+              passed,
+            },
+          });
 
       const review = quiz.questions
         .sort((a, b) => a.order - b.order)
@@ -338,6 +538,7 @@ export class UserQuizService {
             xpAwarded,
             options: question.options,
             order: question.order,
+            wrongAnswers: [],
           };
         });
 
@@ -432,3 +633,4 @@ export class UserQuizService {
     });
   }
 }
+

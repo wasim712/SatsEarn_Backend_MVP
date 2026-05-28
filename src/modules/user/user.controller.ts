@@ -33,6 +33,7 @@ export class UserController {
   static async claimSatWormReward(req: Request, res: Response) { return userTaskHandlers.claimSatWormReward(req, res); }
   static async startTask(req: Request, res: Response) { return userTaskHandlers.startTask(req, res); }
   static async getTodayQuiz(req: Request, res: Response) { return userTaskHandlers.getTodayQuiz(req, res); }
+  static async submitTodayQuizAnswer(req: Request, res: Response) { return userTaskHandlers.submitTodayQuizAnswer(req, res); }
   static async submitTodayQuiz(req: Request, res: Response) { return userTaskHandlers.submitTodayQuiz(req, res); }
   static async getWithdrawals(req: Request, res: Response) { return userAccountHandlers.getWithdrawals(req, res); }
   static async requestWithdrawal(req: Request, res: Response) { return userAccountHandlers.requestWithdrawal(req, res); }
