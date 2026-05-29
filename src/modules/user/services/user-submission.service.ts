@@ -134,6 +134,9 @@ export class UserSubmissionService {
     );
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const campaignRewardMatrix = (task.campaign.tierRewardMatrix || {}) as Record<string, number>;
     const overrideRewardMatrix = (task.tierRewardMatrixOverride || {}) as Record<string, number>;

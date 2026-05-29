@@ -5,6 +5,7 @@ import {
   getStreakMilestoneReward,
   isPremiumStreakMilestone,
 } from '../../../utils/reward.util';
+import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
 
 type PersistedQuizAnswer = {
@@ -170,6 +171,18 @@ export class UserQuizService {
 
     if (!task) throw new Error('Task not found');
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { premiumTier: true, premiumExpiresAt: true },
+    });
+
+    if (!user) throw new Error('User not found');
+
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
+
     const existingSubmission = await prisma.submission.findUnique({
       where: { userId_taskId: { userId, taskId } },
     });
@@ -213,6 +226,18 @@ export class UserQuizService {
 
     if (!task) throw new Error('Task not found.');
     if (!task.campaign.isActive) throw new Error('This campaign has ended.');
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { premiumTier: true, premiumExpiresAt: true },
+    });
+
+    if (!user) throw new Error('User not found.');
+
+    const hasPremium = TierUtils.isPremiumActive(user as any);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
 
     const existing = await prisma.submission.findUnique({
       where: { userId_taskId: { userId, taskId } },

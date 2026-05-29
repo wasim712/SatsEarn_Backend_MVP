@@ -62,7 +62,7 @@ export class UserCampaignService {
         if (campaign.tasks.length === 0) return false;
 
         if (campaign.isPremiumOnly) {
-          return hasPremium;
+          return true;
         }
 
         const requiredTierIndex = freeTierOrder.indexOf(campaign.requiredFreeTier);
@@ -159,6 +159,7 @@ export class UserCampaignService {
           requirements: task.requirements,
           tierRewardMatrixOverride: task.tierRewardMatrixOverride,
           xpReward: task.xpRewardOverride ?? task.campaign.xpReward ?? 0,
+          isPremiumOnly: Boolean(task.campaign.isPremiumOnly),
           taskRewardSats,
           doubleRewardsActive,
           isCompleted,
@@ -208,6 +209,9 @@ export class UserCampaignService {
     if (!Boolean((task.requirements as any)?.standalone)) throw new Error('This task is not a standalone task');
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(task.campaign.doubleRewardsStartAt, task.campaign.doubleRewardsEndAt);
     const taskRewardSats = applyDoubleReward(this.getTierRewardForTask(task, activeTier as string), doubleRewardsActive);
@@ -226,6 +230,7 @@ export class UserCampaignService {
       requirements: task.requirements,
       tierRewardMatrixOverride: task.tierRewardMatrixOverride,
       xpReward: task.xpRewardOverride ?? task.campaign.xpReward ?? 0,
+      isPremiumOnly: Boolean(task.campaign.isPremiumOnly),
       taskRewardSats,
       doubleRewardsActive,
       isCompleted,
@@ -274,6 +279,9 @@ export class UserCampaignService {
     if (!campaign.isActive) throw new Error('This campaign is no longer active');
 
     const hasPremium = TierUtils.isPremiumActive(user as any);
+    if (campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This campaign is available for premium members only.');
+    }
     const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);
     const totalTaskRewardForTier = campaign.tasks.reduce(
