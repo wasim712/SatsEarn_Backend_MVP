@@ -1,7 +1,7 @@
-﻿import { CampaignDevice, SubmissionStatus, type User } from '@prisma/client';
+﻿import { SubmissionStatus, TaskPlatform, type User } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
-import { getReferralBonusAmount, getReviewReleaseAt } from '../../utils/submission-flow.util';
+import { getReferralBonusAmount, getReferralBonusMsats, getReviewReleaseAt, splitMsats } from '../../utils/submission-flow.util';
 import {
   applyDoubleReward,
   evaluateDailyActivityStreak,
@@ -51,13 +51,13 @@ async function getUserUniqueActiveDaysLast30Days(userId: string) {
 }
 
 export const ALL_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER'] as const;
-const ALLOWED_STANDALONE_PLATFORMS: readonly CampaignDevice[] = ['NONE', 'DESKTOP', 'ANDROID', 'IOS'];
+const ALLOWED_STANDALONE_PLATFORMS: readonly TaskPlatform[] = ['TWITTER', 'YOUTUBE', 'INSTAGRAM', 'TELEGRAM', 'FACEBOOK', 'LINKEDIN', 'APP_STORE', 'PLAY_STORE', 'WEBSITE'];
 
-export function normalizeStandaloneRequiredPlatform(input: unknown): CampaignDevice {
-  const normalized = String(input || 'NONE').trim().toUpperCase();
-  return ALLOWED_STANDALONE_PLATFORMS.includes(normalized as CampaignDevice)
-    ? (normalized as CampaignDevice)
-    : 'NONE';
+export function normalizeStandaloneRequiredPlatform(input: unknown): TaskPlatform {
+  const normalized = String(input || 'WEBSITE').trim().toUpperCase();
+  return ALLOWED_STANDALONE_PLATFORMS.includes(normalized as TaskPlatform)
+    ? (normalized as TaskPlatform)
+    : 'WEBSITE';
 }
 
 export function normalizeTierRewardMatrix(input: unknown) {
@@ -180,7 +180,16 @@ export async function applyStandaloneRewardEffects(params: {
     }
 
     if (referredById) {
-      const referrer = await prisma.user.findUnique({ where: { id: referredById } });
+      const referrer = await prisma.user.findUnique({
+        where: { id: referredById },
+        select: {
+          id: true,
+          totalXp: true,
+          premiumTier: true,
+          premiumExpiresAt: true,
+          referralPendingMsats: true,
+        },
+      });
       if (referrer) {
         const referralActiveDays = await getUserUniqueActiveDaysLast30Days(userId);
         const referralEligible = referralActiveDays >= REFERRAL_ACTIVE_DAYS_REQUIRED;
@@ -192,8 +201,10 @@ export async function applyStandaloneRewardEffects(params: {
           const configuredCommission = referrerActiveTier ? tierReferralMatrix?.[String(referrerActiveTier)] : undefined;
           const commissionPercent = Number(configuredCommission ?? settings.referralBonusPercent ?? 0);
           const intendedReferralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+          const intendedReferralBonusMsats = getReferralBonusMsats(workerReward, commissionPercent);
 
           let actualReferralBonus = intendedReferralBonus;
+          let actualReferralBonusMsats = intendedReferralBonusMsats;
           if (!referrerHasPremium) {
             const freeTier = TierUtils.getFreeTier(referrer.totalXp);
             const cap = TierUtils.getFreeTierReferralCap(freeTier);
@@ -203,22 +214,38 @@ export async function applyStandaloneRewardEffects(params: {
             });
             const totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
             actualReferralBonus = Math.max(0, Math.min(intendedReferralBonus, cap.maxSats - totalReferralSatsEarned));
+            actualReferralBonusMsats = Math.max(0, Math.min(intendedReferralBonusMsats, (cap.maxSats - totalReferralSatsEarned) * 1000));
           }
 
-          if (actualReferralBonus > 0) {
+          if (actualReferralBonusMsats > 0) {
+            const totalReferralPendingMsats = (referrer.referralPendingMsats || 0) + actualReferralBonusMsats;
+            const { wholeSats, remainingMsats } = splitMsats(totalReferralPendingMsats);
+
             await prisma.user.update({
               where: { id: referrer.id },
-              data: { balancePending: { increment: actualReferralBonus } },
+              data: {
+                balancePending: { increment: wholeSats },
+                referralPendingMsats: remainingMsats,
+              },
             });
             await prisma.ledger.create({
               data: {
                 userId: referrer.id,
-                amountSats: actualReferralBonus,
+                amountSats: wholeSats,
+                amountMsats: actualReferralBonusMsats,
                 type: 'REFERRAL_BONUS',
                 description: `Referral bonus from standalone task completion by ${userFullName || 'your referral'}`,
                 referenceId: submissionId,
               },
             });
+
+            await NotificationService.notifyUser(
+              referrer.id,
+              'Referral Reward Added',
+              `${userFullName || 'Your referral'} completed a standalone task and you earned ${(actualReferralBonusMsats / 1000).toFixed(3)} sats in pending balance.`,
+              'SYSTEM_ALERT',
+              submissionId,
+            );
           }
         }
       }

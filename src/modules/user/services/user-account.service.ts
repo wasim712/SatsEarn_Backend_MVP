@@ -34,10 +34,34 @@ function buildDefaultPremiumYearlySatsMatrix() {
   };
 }
 
+function buildDefaultPremiumMonthlyUsdMatrix() {
+  return {
+    PLATINUM: 4.99,
+    DIAMOND: 6.99,
+    CROWN: 9.99,
+    ELITE: 15.99,
+    FOUNDER: 0,
+  };
+}
+
+function buildDefaultPremiumYearlyUsdMatrix() {
+  return {
+    PLATINUM: 54.99,
+    DIAMOND: 76.99,
+    CROWN: 109.99,
+    ELITE: 175.99,
+    FOUNDER: 249.99,
+  };
+}
+
 function addDays(baseDate: Date, days: number) {
   const next = new Date(baseDate);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function isFutureDate(value: Date | null | undefined) {
+  return Boolean(value && value > new Date());
 }
 
 function decryptProfileFields<T extends Record<string, any>>(user: T | null): T | null {
@@ -62,6 +86,8 @@ export class UserAccountService {
     return {
       monthlySatsMatrix: (settings?.premiumMonthlySatsMatrix as Record<string, number> | null) || buildDefaultPremiumMonthlySatsMatrix(),
       yearlySatsMatrix: (settings?.premiumYearlySatsMatrix as Record<string, number> | null) || buildDefaultPremiumYearlySatsMatrix(),
+      monthlyUsdMatrix: (settings?.premiumMonthlyUsdMatrix as Record<string, number> | null) || buildDefaultPremiumMonthlyUsdMatrix(),
+      yearlyUsdMatrix: (settings?.premiumYearlyUsdMatrix as Record<string, number> | null) || buildDefaultPremiumYearlyUsdMatrix(),
     };
   }
 
@@ -96,6 +122,9 @@ export class UserAccountService {
         balanceAvailable: true,
         premiumTier: true,
         premiumExpiresAt: true,
+        queuedPremiumTier: true,
+        queuedPremiumStartsAt: true,
+        queuedPremiumExpiresAt: true,
         billingRecords: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -108,8 +137,9 @@ export class UserAccountService {
     }
 
     const decrypted = decryptProfileFields(user);
-    const isPremium = TierUtils.isPremiumActive(user as any);
-    const activeTier = isPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const isPremium = Boolean(activePremiumTier);
+    const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const pricing = await this.getPremiumPricing();
 
     return {
@@ -118,6 +148,9 @@ export class UserAccountService {
       isPremium,
       premiumTier: user.premiumTier,
       premiumExpiresAt: user.premiumExpiresAt,
+      queuedPremiumTier: user.queuedPremiumTier,
+      queuedPremiumStartsAt: user.queuedPremiumStartsAt,
+      queuedPremiumExpiresAt: user.queuedPremiumExpiresAt,
       balanceAvailable: user.balanceAvailable,
       premiumPricing: pricing,
       billingHistory: user.billingRecords,
@@ -134,6 +167,9 @@ export class UserAccountService {
         balanceAvailable: true,
         premiumTier: true,
         premiumExpiresAt: true,
+        queuedPremiumTier: true,
+        queuedPremiumStartsAt: true,
+        queuedPremiumExpiresAt: true,
       },
     });
 
@@ -157,16 +193,40 @@ export class UserAccountService {
       ? PREMIUM_TIER_DURATION_DAYS[data.plan].monthly
       : PREMIUM_TIER_DURATION_DAYS[data.plan].yearly;
 
-    const startsFrom = user.premiumExpiresAt && user.premiumExpiresAt > new Date() ? user.premiumExpiresAt : new Date();
-    const premiumExpiresAt = addDays(startsFrom, durationDays);
+    const hasActiveCurrentPlan = Boolean(user.premiumTier && user.premiumExpiresAt && user.premiumExpiresAt > new Date());
+    const isSameAsCurrentTier = hasActiveCurrentPlan && user.premiumTier === data.plan;
+    const hasQueuedPlan = Boolean(user.queuedPremiumTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > new Date());
+    const isSameAsQueuedTier = hasQueuedPlan && user.queuedPremiumTier === data.plan;
+
+    const currentStartFrom = hasActiveCurrentPlan && user.premiumExpiresAt ? user.premiumExpiresAt : new Date();
+    const premiumExpiresAt = addDays(currentStartFrom, durationDays);
+
+    const shouldQueueTier = hasActiveCurrentPlan && user.premiumTier !== data.plan;
+    const queuedPremiumStartsAt = shouldQueueTier
+      ? (user.queuedPremiumStartsAt || user.premiumExpiresAt || new Date())
+      : null;
+    const queuedStackBase = isSameAsQueuedTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > new Date()
+      ? user.queuedPremiumExpiresAt
+      : (user.premiumExpiresAt || new Date());
+    const queuedPremiumExpiresAt = shouldQueueTier
+      ? addDays(queuedStackBase, durationDays)
+      : null;
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
         data: {
           balanceAvailable: { decrement: amountSats },
-          premiumTier: data.plan,
-          premiumExpiresAt,
+          ...(shouldQueueTier
+            ? {
+                queuedPremiumTier: data.plan,
+                queuedPremiumStartsAt,
+                queuedPremiumExpiresAt,
+              }
+            : {
+                premiumTier: data.plan,
+                premiumExpiresAt,
+              }),
         },
       });
 
@@ -186,21 +246,38 @@ export class UserAccountService {
           billingCycle: data.billingCycle,
           billingSource: BillingSource.SATS_BALANCE,
           amountSats,
-          premiumExpiresAt,
+          premiumExpiresAt: shouldQueueTier ? queuedPremiumExpiresAt : premiumExpiresAt,
+          adminNotes: shouldQueueTier
+            ? `Queued premium upgrade. Activates after current ${user.premiumTier} subscription ends.`
+            : undefined,
         },
       });
     });
 
     await NotificationService.notifyAdmins(
       'Premium upgraded using sats',
-      `${user.fullName?.trim() || user.email} upgraded to ${data.plan} using ${amountSats} sats (${data.billingCycle}).`,
+      shouldQueueTier
+        ? `${user.fullName?.trim() || user.email} queued ${data.plan} using ${amountSats} sats (${data.billingCycle}). It will activate after the current ${user.premiumTier} plan ends.`
+        : `${user.fullName?.trim() || user.email} upgraded to ${data.plan} using ${amountSats} sats (${data.billingCycle}).`,
+      'SYSTEM_ALERT',
+      user.id,
+    );
+
+    await NotificationService.notifyUser(
+      user.id,
+      shouldQueueTier ? 'Premium Upgrade Queued' : 'Premium Upgraded',
+      shouldQueueTier
+        ? `Your ${data.plan} ${data.billingCycle.toLowerCase()} plan has been queued and will start after your current subscription ends.`
+        : `Your ${data.plan} ${data.billingCycle.toLowerCase()} plan is now active.`,
       'SYSTEM_ALERT',
       user.id,
     );
 
     return {
       success: true,
-      message: `Successfully upgraded to ${data.plan} using sats.`,
+      message: shouldQueueTier
+        ? `Successfully queued ${data.plan}. It will start after your current subscription ends.`
+        : `Successfully upgraded to ${data.plan} using sats.`,
       profile: await this.getUserProfile(userId),
     };
   }
@@ -222,9 +299,8 @@ export class UserAccountService {
       throw new Error('User not found');
     }
 
-    const activeTier = TierUtils.isPremiumActive(user as any)
-      ? user.premiumTier || 'UNKNOWN'
-      : TierUtils.getFreeTier(user.totalXp);
+    const activeTier = TierUtils.getCurrentPremiumTier(user as any)
+      || TierUtils.getFreeTier(user.totalXp);
 
     const existingRequest = await prisma.premiumRequest.findFirst({
       where: {

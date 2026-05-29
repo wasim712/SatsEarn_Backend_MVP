@@ -31,8 +31,9 @@ export class UserWithdrawalService {
 
     if (!user) throw new Error('User not found.');
 
-    const hasPremium = TierUtils.isPremiumActive(user as any);
-    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const hasPremium = Boolean(activePremiumTier);
+    const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const tierMinWithdrawalMatrix = (settings?.tierMinWithdrawalMatrix as Record<string, number> | null) || null;
     const configuredTierMin = tierMinWithdrawalMatrix?.[String(activeTier)];
 

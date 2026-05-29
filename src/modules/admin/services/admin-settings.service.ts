@@ -33,6 +33,24 @@ const DEFAULT_PREMIUM_YEARLY_SATS_MATRIX = {
   FOUNDER: 299999,
 };
 
+const DEFAULT_PREMIUM_MONTHLY_USD_MATRIX = {
+  PLATINUM: 4.99,
+  DIAMOND: 6.99,
+  CROWN: 9.99,
+  ELITE: 15.99,
+  FOUNDER: 0,
+};
+
+const DEFAULT_PREMIUM_YEARLY_USD_MATRIX = {
+  PLATINUM: 54.99,
+  DIAMOND: 76.99,
+  CROWN: 109.99,
+  ELITE: 175.99,
+  FOUNDER: 249.99,
+};
+
+const DEFAULT_BTC_PRICE_USD = 90000;
+
 export class AdminSettingsService {
   static async getGamificationSettings() {
     let settings = await prisma.platformSettings.findFirst();
@@ -46,17 +64,23 @@ export class AdminSettingsService {
           },
           premiumMonthlySatsMatrix: DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX,
           premiumYearlySatsMatrix: DEFAULT_PREMIUM_YEARLY_SATS_MATRIX,
+          premiumMonthlyUsdMatrix: DEFAULT_PREMIUM_MONTHLY_USD_MATRIX,
+          premiumYearlyUsdMatrix: DEFAULT_PREMIUM_YEARLY_USD_MATRIX,
+          btcPriceUsd: DEFAULT_BTC_PRICE_USD,
           userSidebarConfig: DEFAULT_USER_SIDEBAR_CONFIG,
         },
       });
     }
 
-    if (!settings.premiumMonthlySatsMatrix || !settings.premiumYearlySatsMatrix || !settings.userSidebarConfig) {
+    if (!settings.premiumMonthlySatsMatrix || !settings.premiumYearlySatsMatrix || !settings.premiumMonthlyUsdMatrix || !settings.premiumYearlyUsdMatrix || !settings.userSidebarConfig || !settings.btcPriceUsd) {
       settings = await prisma.platformSettings.update({
         where: { id: settings.id },
         data: {
           premiumMonthlySatsMatrix: settings.premiumMonthlySatsMatrix || DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX,
           premiumYearlySatsMatrix: settings.premiumYearlySatsMatrix || DEFAULT_PREMIUM_YEARLY_SATS_MATRIX,
+          premiumMonthlyUsdMatrix: settings.premiumMonthlyUsdMatrix || DEFAULT_PREMIUM_MONTHLY_USD_MATRIX,
+          premiumYearlyUsdMatrix: settings.premiumYearlyUsdMatrix || DEFAULT_PREMIUM_YEARLY_USD_MATRIX,
+          btcPriceUsd: settings.btcPriceUsd || DEFAULT_BTC_PRICE_USD,
           userSidebarConfig: settings.userSidebarConfig || DEFAULT_USER_SIDEBAR_CONFIG,
         },
       });

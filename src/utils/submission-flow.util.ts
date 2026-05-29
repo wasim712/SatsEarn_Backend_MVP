@@ -20,3 +20,28 @@ export function getReferralBonusAmount(baseRewardSats: number, commissionPercent
 
   return Math.floor(baseRewardSats * (commissionPercent / 100));
 }
+
+export function getReferralBonusMsats(baseRewardSats: number, commissionPercent: number): number {
+  if (!Number.isFinite(baseRewardSats) || !Number.isFinite(commissionPercent)) {
+    return 0;
+  }
+
+  if (baseRewardSats <= 0 || commissionPercent <= 0) {
+    return 0;
+  }
+
+  return Math.round(baseRewardSats * (commissionPercent / 100) * 1000);
+}
+
+export function splitMsats(totalMsats: number) {
+  if (!Number.isFinite(totalMsats) || totalMsats <= 0) {
+    return { wholeSats: 0, remainingMsats: 0 };
+  }
+
+  const safeTotalMsats = Math.floor(totalMsats);
+
+  return {
+    wholeSats: Math.floor(safeTotalMsats / 1000),
+    remainingMsats: safeTotalMsats % 1000,
+  };
+}
