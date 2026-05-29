@@ -83,7 +83,14 @@ export class AdminService {
     return await AdminSettingsService.updateGamificationSettings(rawData);
   }
   static async getPendingSubmissions() {
-    return await StandaloneReviewService.getPendingSubmissions();
+    const [campaignSubmissions, standaloneSubmissions] = await Promise.all([
+      AdminSubmissionService.getPendingSubmissions(),
+      StandaloneReviewService.getPendingSubmissions(),
+    ]);
+
+    return [...campaignSubmissions, ...standaloneSubmissions].sort(
+      (left: any, right: any) => new Date(left.submittedAt).getTime() - new Date(right.submittedAt).getTime(),
+    );
   }
   static async reviewSubmission(
     submissionId: string,
@@ -91,6 +98,19 @@ export class AdminService {
     rejectionReason?: string,
     adminId?: string,
   ) {
+    try {
+      return await AdminSubmissionService.reviewSubmission(
+        submissionId,
+        status,
+        rejectionReason,
+        adminId,
+      );
+    } catch (error: any) {
+      if (error?.message !== 'Submission not found') {
+        throw error;
+      }
+    }
+
     return await StandaloneReviewService.reviewSubmission(
       submissionId,
       status,
