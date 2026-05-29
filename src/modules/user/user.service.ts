@@ -106,6 +106,64 @@ export class UserService {
   }
 
   static async getUserDashboard(userId: string) {
+    const platformSettings = await prisma.platformSettings.findFirst({
+      select: { btcPriceUsd: true },
+    });
+
+    const unlockedReferralLedgers = await prisma.ledger.findMany({
+      where: {
+        userId,
+        type: 'REFERRAL_BONUS',
+        OR: [
+          { referenceId: null },
+          { referenceId: { not: null } },
+        ],
+      },
+      select: { referenceId: true, amountMsats: true, amountSats: true },
+    });
+
+    const referenceIds = unlockedReferralLedgers
+      .map((entry) => entry.referenceId)
+      .filter((value): value is string => Boolean(value));
+
+    const [campaignSubmissions, standaloneSubmissions] = await Promise.all([
+      referenceIds.length
+        ? prisma.submission.findMany({
+            where: { id: { in: referenceIds }, status: 'WITHDRAWABLE' },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      referenceIds.length
+        ? prisma.standaloneSubmission.findMany({
+            where: { id: { in: referenceIds }, status: 'WITHDRAWABLE' },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const unlockedReferenceIds = new Set([
+      ...campaignSubmissions.map((entry) => entry.id),
+      ...standaloneSubmissions.map((entry) => entry.id),
+    ]);
+
+    const availableReferralMsats = unlockedReferralLedgers.reduce((sum, entry) => {
+      if (!entry.referenceId || unlockedReferenceIds.has(entry.referenceId)) {
+        return sum + (entry.amountMsats ?? entry.amountSats * 1000);
+      }
+
+      return sum;
+    }, 0);
+
+    const wholeAvailableReferralSats = unlockedReferralLedgers.reduce((sum, entry) => {
+      if (!entry.referenceId || unlockedReferenceIds.has(entry.referenceId)) {
+        return sum + entry.amountSats;
+      }
+
+      return sum;
+    }, 0);
+
+    const availableReferralRemainderMsats = Math.max(0, availableReferralMsats - wholeAvailableReferralSats * 1000);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -136,6 +194,7 @@ export class UserService {
           take: 5,
           select: {
             amountSats: true,
+            amountMsats: true,
             type: true,
             description: true,
             createdAt: true,
@@ -158,9 +217,10 @@ export class UserService {
 
     if (!user) throw new Error('User not found');
 
-    const isPremium = TierUtils.isPremiumActive(user as any);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const isPremium = Boolean(activePremiumTier);
     const freeTier = TierUtils.getFreeTier(user.totalXp);
-    const activeTier = isPremium ? user.premiumTier : freeTier;
+    const activeTier = activePremiumTier || freeTier;
 
     const maxXp = 200000;
     const cappedXp = Math.min(user.totalXp, maxXp);
@@ -196,9 +256,12 @@ export class UserService {
     return {
       balances: {
         available: user.balanceAvailable,
+        availableMsats: availableReferralRemainderMsats,
         pending: user.balancePending,
+        pendingMsats: user.referralPendingMsats || 0,
         locked: user.balanceLocked,
         totalLifetime: user.balanceAvailable + user.balancePending + user.balanceLocked,
+        btcPriceUsd: platformSettings?.btcPriceUsd || 90000,
       },
       gamification: {
         totalXp: user.totalXp,
@@ -306,6 +369,10 @@ export class UserService {
   }
 
   static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {
+    return await UserSubmissionService.submitTask(userId, taskId, proofData, clientIp);
+  }
+
+  static async submitStandaloneTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {
     return await StandaloneUserService.submitTask(userId, taskId, proofData, clientIp);
   }
 
@@ -338,7 +405,7 @@ export class UserService {
             userId,
             type: 'TASK_REWARD',
           },
-          select: { amountSats: true },
+          select: { amountSats: true, amountMsats: true },
         });
 
         return {
@@ -350,7 +417,7 @@ export class UserService {
           submittedAt: submission.submittedAt,
           unlockAt: submission.unlockAt,
           creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
-          rewardSats: ledgerEntry?.amountSats || 0,
+          rewardSats: ledgerEntry ? ((ledgerEntry.amountMsats ?? ledgerEntry.amountSats * 1000) / 1000) : 0,
           remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
         };
       }),

@@ -13,7 +13,7 @@ export class AdminCampaignService {
         socialHandleTarget: data.socialHandleTarget,
         maxCompletions: data.maxCompletions,
         targetCountries: data.targetCountries || [],
-        requiredPlatform: data.requiredPlatform || 'NONE',
+        requiredPlatform: data.requiredPlatform || 'WEBSITE',
         isPremiumOnly: data.isPremiumOnly || false,
         requiredFreeTier: data.requiredFreeTier || 'BASIC',
         baseRewardSats: 0,
@@ -228,7 +228,7 @@ export class AdminCampaignService {
         tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
         xpRewardOverride: data.xpRewardOverride ?? null,
         requirements: {
-          requiredPlatform: data.requiredPlatform || 'NONE',
+          requiredPlatform: data.requiredPlatform || 'WEBSITE',
           standalone: true,
         },
       },
@@ -306,7 +306,7 @@ export class AdminCampaignService {
         requirements: {
           ...(data.requirements || {}),
           standalone: true,
-          requiredPlatform: requiredPlatform || 'NONE',
+          requiredPlatform: requiredPlatform || 'WEBSITE',
         },
       },
       include: { campaign: true },
@@ -346,7 +346,7 @@ export class AdminCampaignService {
         xpRewardOverride: data.xpRewardOverride ?? null,
         requirements: {
           ...(data.requirements || {}),
-          requiredPlatform: data.requiredPlatform || 'NONE',
+          requiredPlatform: data.requiredPlatform || 'WEBSITE',
         },
       },
     });

@@ -8,7 +8,7 @@ export class UserReferralService {
       include: {
         transactions: {
           where: { type: 'REFERRAL_BONUS' },
-          select: { amountSats: true },
+          select: { amountSats: true, amountMsats: true },
         },
         referrals: {
           select: {
@@ -64,7 +64,7 @@ export class UserReferralService {
       : TierUtils.getFreeTier(user.totalXp);
     const isFreeTier = !TierUtils.isPremiumActive(user as any);
     const freeTierCap = isFreeTier ? TierUtils.getFreeTierReferralCap(activeTier as any) : null;
-    const lifetimeReferralEarnings = user.transactions.reduce((sum, tx) => sum + tx.amountSats, 0);
+    const lifetimeReferralEarnings = user.transactions.reduce((sum, tx) => sum + (tx.amountMsats ?? tx.amountSats * 1000), 0);
 
     let activeCount = 0;
     let inactiveCount = 0;
@@ -104,7 +104,7 @@ export class UserReferralService {
       totalReferrals: user.referrals.length,
       activeReferrals: activeCount,
       inactiveReferrals: inactiveCount,
-      lifetimeEarningsSats: lifetimeReferralEarnings,
+      lifetimeEarningsSats: lifetimeReferralEarnings / 1000,
       activeTier,
       referralRewardCapSats: freeTierCap?.maxSats ?? null,
       referrals: referralDetails,

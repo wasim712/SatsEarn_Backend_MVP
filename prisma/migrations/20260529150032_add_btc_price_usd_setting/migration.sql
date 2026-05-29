@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "PlatformSettings" ADD COLUMN     "btcPriceUsd" DOUBLE PRECISION NOT NULL DEFAULT 90000;

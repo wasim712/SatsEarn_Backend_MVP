@@ -36,7 +36,7 @@ export const userTaskHandlers = {
         screenshotUrl = await CloudinaryService.uploadImageBuffer(file.buffer);
       }
 
-      const result = await UserService.submitTask(req.user!.id, taskId, { screenshotUrl, proofText }, clientIp);
+      const result = await UserService.submitStandaloneTask(req.user!.id, taskId, { screenshotUrl, proofText }, clientIp);
 
       let message = 'Proof submitted successfully and is pending manual review.';
       if (result.status === 'PENDING_24H' || result.status === 'LOCKED_15D') {

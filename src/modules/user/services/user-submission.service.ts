@@ -3,7 +3,9 @@ import { prisma } from '../../../db/prisma.client';
 import { TierUtils } from '../../../utils/tier.utils';
 import {
   getReferralBonusAmount,
+  getReferralBonusMsats,
   getReviewReleaseAt,
+  splitMsats,
 } from '../../../utils/submission-flow.util';
 import {
   applyDoubleReward,
@@ -133,8 +135,12 @@ export class UserSubmissionService {
       task.campaign.doubleRewardsEndAt,
     );
 
-    const hasPremium = TierUtils.isPremiumActive(user as any);
-    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const hasPremium = Boolean(activePremiumTier);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
+    const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const campaignRewardMatrix = (task.campaign.tierRewardMatrix || {}) as Record<string, number>;
     const overrideRewardMatrix = (task.tierRewardMatrixOverride || {}) as Record<string, number>;
     const tierKey = String(activeTier || '');
@@ -235,7 +241,16 @@ export class UserSubmissionService {
           }
 
           if (user.referredById) {
-            const referrer = await tx.user.findUnique({ where: { id: user.referredById } });
+            const referrer = await tx.user.findUnique({
+              where: { id: user.referredById },
+              select: {
+                id: true,
+                totalXp: true,
+                premiumTier: true,
+                premiumExpiresAt: true,
+                referralPendingMsats: true,
+              },
+            });
 
             if (referrer) {
               const referralActiveDays = await getUserUniqueActiveDaysLast30Days(tx as typeof prisma, userId);
@@ -253,7 +268,8 @@ export class UserSubmissionService {
                 const commissionPercent = Number(
                   configuredCommission ?? settings.referralBonusPercent ?? 0,
                 );
-                let referralBonus = getReferralBonusAmount(workerReward, commissionPercent);
+                const intendedReferralBonusMsats = getReferralBonusMsats(workerReward, commissionPercent);
+                let referralBonusMsats = intendedReferralBonusMsats;
 
                 if (!referrerHasPremium) {
                   const freeTier = TierUtils.getFreeTier(referrer.totalXp);
@@ -269,24 +285,32 @@ export class UserSubmissionService {
 
                   const totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
                   const remainingSats = cap.maxSats - totalReferralSatsEarned;
+                  const remainingMsats = Math.max(0, remainingSats * 1000);
 
                   if (remainingSats <= 0) {
-                    referralBonus = 0;
+                    referralBonusMsats = 0;
                   } else {
-                    referralBonus = Math.max(0, Math.min(referralBonus, remainingSats));
+                    referralBonusMsats = Math.max(0, Math.min(referralBonusMsats, remainingMsats));
                   }
                 }
 
-                if (referralBonus > 0) {
+                if (referralBonusMsats > 0) {
+                  const totalReferralPendingMsats = (referrer.referralPendingMsats || 0) + referralBonusMsats;
+                  const { wholeSats, remainingMsats } = splitMsats(totalReferralPendingMsats);
+
                   await tx.user.update({
                     where: { id: referrer.id },
-                    data: { balancePending: { increment: referralBonus } },
+                    data: {
+                      balancePending: { increment: wholeSats },
+                      referralPendingMsats: remainingMsats,
+                    },
                   });
 
                   await tx.ledger.create({
                     data: {
                       userId: referrer.id,
-                      amountSats: referralBonus,
+                      amountSats: wholeSats,
+                      amountMsats: referralBonusMsats,
                       type: 'REFERRAL_BONUS',
                       description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}`,
                       referenceId: submission.id,
@@ -369,10 +393,9 @@ export class UserSubmissionService {
           const referrer = await prisma.user.findUnique({ where: { id: user.referredById } });
 
           if (referrer) {
-            const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
-            const referrerActiveTier = referrerHasPremium
-              ? referrer.premiumTier
-              : TierUtils.getFreeTier(referrer.totalXp);
+            const referrerActivePremiumTier = TierUtils.getCurrentPremiumTier(referrer as any);
+            const referrerHasPremium = Boolean(referrerActivePremiumTier);
+            const referrerActiveTier = referrerActivePremiumTier || TierUtils.getFreeTier(referrer.totalXp);
             const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
             const configuredCommission = referrerActiveTier
               ? tierReferralMatrix?.[String(referrerActiveTier)]
@@ -402,23 +425,24 @@ export class UserSubmissionService {
                 type: 'REFERRAL_BONUS',
                 referenceId: submission.id,
               },
-              select: { amountSats: true },
+              select: { amountSats: true, amountMsats: true },
             });
 
-            const actualReferralBonus = actualReferralLedger?.amountSats || 0;
+              const actualReferralBonus = actualReferralLedger?.amountSats || 0;
+              const actualReferralBonusMsats = actualReferralLedger?.amountMsats || actualReferralBonus * 1000;
 
-            if (actualReferralBonus > 0) {
-              const cappedMessage = !referrerHasPremium && actualReferralBonus < intendedReferralBonus
-                ? ` Your free-tier cap reduced this reward from ${intendedReferralBonus} sats to ${actualReferralBonus} sats.`
-                : '';
+              if (actualReferralBonusMsats > 0) {
+                const cappedMessage = !referrerHasPremium && actualReferralBonus < intendedReferralBonus
+                  ? ` Your free-tier cap reduced this reward from ${intendedReferralBonus} sats to ${actualReferralBonus} sats.`
+                  : '';
 
-              await NotificationService.notifyUser(
-                referrer.id,
-                'Referral Reward Added',
-                `${referredUserName} completed a task and you earned ${actualReferralBonus} sats as referral reward.${cappedMessage}`,
-                'SYSTEM_ALERT',
-                submission.id,
-              );
+                await NotificationService.notifyUser(
+                  referrer.id,
+                  'Referral Reward Added',
+                  `${referredUserName} completed a task and you earned ${(actualReferralBonusMsats / 1000).toFixed(3)} sats as referral reward in pending balance.${cappedMessage}`,
+                  'SYSTEM_ALERT',
+                  submission.id,
+                );
             } else if (!referrerHasPremium && cap) {
               const remainingSats = Math.max(cap.maxSats - totalReferralSatsEarned, 0);
 

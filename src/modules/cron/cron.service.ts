@@ -7,6 +7,70 @@ import {
 } from '../../utils/submission-flow.util';
 
 export class CronService {
+  static async processQueuedPremiumTransitions() {
+    const now = new Date();
+
+    const usersReadyForQueuedPremium = await prisma.user.findMany({
+      where: {
+        queuedPremiumTier: { not: null },
+        queuedPremiumStartsAt: { lte: now },
+        queuedPremiumExpiresAt: { gt: now },
+        OR: [
+          { premiumExpiresAt: null },
+          { premiumExpiresAt: { lte: now } },
+        ],
+      },
+      select: {
+        id: true,
+        queuedPremiumTier: true,
+        queuedPremiumStartsAt: true,
+        queuedPremiumExpiresAt: true,
+      },
+    });
+
+    if (usersReadyForQueuedPremium.length === 0) {
+      return { message: 'No queued premium upgrades are ready to activate.' };
+    }
+
+    let activatedCount = 0;
+
+    for (const user of usersReadyForQueuedPremium) {
+      if (!user.queuedPremiumTier || !user.queuedPremiumExpiresAt) {
+        continue;
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          premiumTier: user.queuedPremiumTier,
+          premiumExpiresAt: user.queuedPremiumExpiresAt,
+          queuedPremiumTier: null,
+          queuedPremiumStartsAt: null,
+          queuedPremiumExpiresAt: null,
+        },
+      });
+
+      try {
+        await NotificationService.notifyUser(
+          user.id,
+          'Queued Premium Activated',
+          `Your queued ${user.queuedPremiumTier} subscription is now active.`,
+          'SYSTEM_ALERT',
+          user.id,
+        );
+      } catch (notifyError) {
+        console.error('Queued premium activated, but notification failed:', notifyError);
+      }
+
+      activatedCount++;
+    }
+
+    return {
+      success: true,
+      message: `Activated ${activatedCount} queued premium subscriptions.`,
+    };
+  }
+
   static async process24HourReviewQueue() {
     const settings = await prisma.platformSettings.findFirst() || {
       securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,

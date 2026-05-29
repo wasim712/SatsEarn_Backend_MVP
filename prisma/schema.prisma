@@ -48,6 +48,18 @@ enum CampaignDevice {
   ANDROID
   IOS
 }
+
+enum TaskPlatform {
+  TWITTER
+  YOUTUBE
+  INSTAGRAM
+  TELEGRAM
+  FACEBOOK
+  LINKEDIN
+  APP_STORE
+  PLAY_STORE
+  WEBSITE
+}
 enum ProofType {
   SCREENSHOT
   URL
@@ -159,10 +171,14 @@ id               String   @id @default(uuid())
   balanceAvailable Int      @default(0) 
   balancePending   Int      @default(0) 
   balanceLocked    Int      @default(0) 
+  referralPendingMsats Int  @default(0)
 
   totalXp          Int      @default(0) 
   premiumTier      PremiumTier?         
   premiumExpiresAt DateTime?            
+  queuedPremiumTier PremiumTier?
+  queuedPremiumStartsAt DateTime?
+  queuedPremiumExpiresAt DateTime?
 
   currentStreak    Int      @default(0)
   lastClaimedStreakMilestone Int @default(0)
@@ -209,6 +225,7 @@ model Ledger {
   user          User            @relation(fields: [userId], references: [id])
   
   amountSats    Int             // Positive (Income) or Negative (Withdrawal)
+  amountMsats   Int?
   type          TransactionType
   description   String?         
   
@@ -238,6 +255,9 @@ model PlatformSettings {
   tierMinWithdrawalMatrix Json?
   premiumMonthlySatsMatrix Json?
   premiumYearlySatsMatrix  Json?
+  premiumMonthlyUsdMatrix  Json?
+  premiumYearlyUsdMatrix   Json?
+  btcPriceUsd             Float   @default(90000)
   userSidebarConfig     Json?
 
   baseXpPerTask        Int      @default(10)
@@ -255,7 +275,7 @@ model StandaloneTask {
   targetCountries      String[]
   isPremiumOnly        Boolean        @default(false)
   requiredFreeTier     FreeTier       @default(BASIC)
-  requiredPlatform     CampaignDevice @default(NONE)
+  requiredPlatform     TaskPlatform   @default(WEBSITE)
   proofType            ProofType      @default(SCREENSHOT)
   xpReward             Int            @default(0)
   tierRewardMatrix     Json

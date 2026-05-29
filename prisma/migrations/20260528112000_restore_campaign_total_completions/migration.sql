@@ -1,2 +1,2 @@
-﻿ALTER TABLE "Campaign"
+ALTER TABLE "Campaign"
 ADD COLUMN IF NOT EXISTS "totalCompletions" INTEGER NOT NULL DEFAULT 0;

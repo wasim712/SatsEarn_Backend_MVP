@@ -26,7 +26,8 @@ export class UserCampaignService {
     const freeTierOrder = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'];
     const userFreeTier = TierUtils.getFreeTier(user.totalXp);
     const userFreeTierIndex = freeTierOrder.indexOf(userFreeTier);
-    const hasPremium = TierUtils.isPremiumActive(user as any);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const hasPremium = Boolean(activePremiumTier);
 
     const campaigns = await prisma.campaign.findMany({
       where: {
@@ -62,7 +63,7 @@ export class UserCampaignService {
         if (campaign.tasks.length === 0) return false;
 
         if (campaign.isPremiumOnly) {
-          return hasPremium;
+          return true;
         }
 
         const requiredTierIndex = freeTierOrder.indexOf(campaign.requiredFreeTier);
@@ -70,7 +71,7 @@ export class UserCampaignService {
       })
       .map((campaign) => {
         const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);
-        const activeTier = hasPremium ? user.premiumTier : userFreeTier;
+        const activeTier = activePremiumTier || userFreeTier;
         const taskLevelRewards = campaign.tasks.map((task) => {
           return this.getTierRewardForTask({ ...task, campaign }, activeTier as string);
         });
@@ -159,6 +160,7 @@ export class UserCampaignService {
           requirements: task.requirements,
           tierRewardMatrixOverride: task.tierRewardMatrixOverride,
           xpReward: task.xpRewardOverride ?? task.campaign.xpReward ?? 0,
+          isPremiumOnly: Boolean(task.campaign.isPremiumOnly),
           taskRewardSats,
           doubleRewardsActive,
           isCompleted,
@@ -207,8 +209,12 @@ export class UserCampaignService {
     if (!task.campaign?.isActive) throw new Error('This standalone task is no longer active');
     if (!Boolean((task.requirements as any)?.standalone)) throw new Error('This task is not a standalone task');
 
-    const hasPremium = TierUtils.isPremiumActive(user as any);
-    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const hasPremium = Boolean(activePremiumTier);
+    if (task.campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This task is available for premium members only.');
+    }
+    const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(task.campaign.doubleRewardsStartAt, task.campaign.doubleRewardsEndAt);
     const taskRewardSats = applyDoubleReward(this.getTierRewardForTask(task, activeTier as string), doubleRewardsActive);
     const latestSubmission = task.submissions[0];
@@ -226,6 +232,7 @@ export class UserCampaignService {
       requirements: task.requirements,
       tierRewardMatrixOverride: task.tierRewardMatrixOverride,
       xpReward: task.xpRewardOverride ?? task.campaign.xpReward ?? 0,
+      isPremiumOnly: Boolean(task.campaign.isPremiumOnly),
       taskRewardSats,
       doubleRewardsActive,
       isCompleted,
@@ -273,8 +280,12 @@ export class UserCampaignService {
     if (!campaign) throw new Error('Campaign not found');
     if (!campaign.isActive) throw new Error('This campaign is no longer active');
 
-    const hasPremium = TierUtils.isPremiumActive(user as any);
-    const activeTier = hasPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp);
+    const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+    const hasPremium = Boolean(activePremiumTier);
+    if (campaign.isPremiumOnly && !hasPremium) {
+      throw new Error('This campaign is available for premium members only.');
+    }
+    const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);
     const totalTaskRewardForTier = campaign.tasks.reduce(
       (sum, task) => sum + this.getTierRewardForTask({ ...task, campaign }, activeTier as string),

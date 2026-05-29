@@ -1,4 +1,4 @@
-﻿import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
+import { CampaignDevice, FreeTier, PremiumTier, TaskCategory, TaskPlatform } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -46,6 +46,7 @@ export const updateCampaignSchema = z.object({
 
 const ProofTypeEnum = z.enum(["SCREENSHOT", "URL", "TEXT_RESPONSE", "API_VERIFIED"]);
 const PremiumTierEnum = z.nativeEnum(PremiumTier);
+const TaskPlatformEnum = z.nativeEnum(TaskPlatform);
 
 export const createTaskSchema = z.object({
   body: z.object({
@@ -261,6 +262,9 @@ export const updatePlatformSettingsSchema = z.object({
     tierMinWithdrawalMatrix: z.record(z.string(), z.number()).optional(),
     premiumMonthlySatsMatrix: z.record(z.string(), z.number()).optional(),
     premiumYearlySatsMatrix: z.record(z.string(), z.number()).optional(),
+    premiumMonthlyUsdMatrix: z.record(z.string(), z.number()).optional(),
+    premiumYearlyUsdMatrix: z.record(z.string(), z.number()).optional(),
+    btcPriceUsd: z.number().min(0).optional(),
     userSidebarConfig: z.object({
       dashboard: z.boolean().optional(),
       tasks: z.boolean().optional(),
