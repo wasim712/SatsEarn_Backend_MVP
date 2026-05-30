@@ -173,13 +173,18 @@ export class AdminCampaignService {
       baseRewardSats: _baseRewardSats,
       tierRewardMatrix: _tierRewardMatrix,
       xpReward: _xpReward,
+      maxCompletions,
       ...safeData
     } = data;
+
 
     return await prisma.campaign.update({
       where: { id },
       data: {
         ...safeData,
+        ...(Object.prototype.hasOwnProperty.call(data, 'maxCompletions')
+          ? { maxCompletions: Number(maxCompletions) }
+          : {}),
         ...(Object.prototype.hasOwnProperty.call(safeData, 'coverImageUrl')
           ? { coverImageUrl: safeData.coverImageUrl || null }
           : {}),

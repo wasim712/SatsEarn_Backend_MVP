@@ -11,7 +11,8 @@
     "dev": "npx prisma generate && nodemon --watch src --ext ts --exec ts-node src/server.ts",
     "migrate:prod": "npx prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
-    "check:referral": "ts-node scripts/check-referral-status.ts"
+    "check:referral": "ts-node scripts/check-referral-status.ts",
+    "test:campaign-max": "ts-node scripts/test-campaign-max-completions-update.ts"
   },
   "keywords": [],
   "author": "",
