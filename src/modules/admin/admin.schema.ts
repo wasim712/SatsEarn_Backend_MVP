@@ -32,6 +32,7 @@ export const updateCampaignSchema = z.object({
     targetCountries: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
     requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
+    maxCompletions: z.number().int().positive().optional(),
 
     // CAMPAIGN SETTINGS
     isPremiumOnly: z.boolean().optional(),
