@@ -5,8 +5,17 @@ import {
 } from './standalone.helpers';
 
 export class StandaloneAdminService {
+  private static normalizeNewUserSettings(data: { isNewUserOnly?: boolean; newUserMaxAccountAgeDays?: number | null }) {
+    const isNewUserOnly = Boolean(data.isNewUserOnly);
+    return {
+      isNewUserOnly,
+      newUserMaxAccountAgeDays: isNewUserOnly ? Number(data.newUserMaxAccountAgeDays ?? 7) : null,
+    };
+  }
+
   static async createTask(data: any) {
     const isPremiumOnly = Boolean(data.isPremiumOnly);
+    const newUserSettings = this.normalizeNewUserSettings(data);
 
     const task = await prisma.standaloneTask.create({
       data: {
@@ -17,6 +26,7 @@ export class StandaloneAdminService {
         targetUrl: data.targetUrl || null,
         targetCountries: Array.isArray(data.targetCountries) ? data.targetCountries : [],
         isPremiumOnly,
+        ...newUserSettings,
         requiredFreeTier: isPremiumOnly ? 'BASIC' : (data.requiredFreeTier || 'BASIC'),
         proofType: data.proofType || 'SCREENSHOT',
         requiredPlatform: normalizeStandaloneRequiredPlatform(data.requiredPlatform),
@@ -49,6 +59,12 @@ export class StandaloneAdminService {
   static async updateTask(taskId: string, data: any) {
     const existingTask = await this.getTaskById(taskId);
     const isPremiumOnly = data.isPremiumOnly !== undefined ? Boolean(data.isPremiumOnly) : existingTask.isPremiumOnly;
+    const newUserSettings = data.isNewUserOnly !== undefined || Object.prototype.hasOwnProperty.call(data, 'newUserMaxAccountAgeDays')
+      ? this.normalizeNewUserSettings({
+          isNewUserOnly: data.isNewUserOnly !== undefined ? data.isNewUserOnly : existingTask.isNewUserOnly,
+          newUserMaxAccountAgeDays: Object.prototype.hasOwnProperty.call(data, 'newUserMaxAccountAgeDays') ? data.newUserMaxAccountAgeDays : existingTask.newUserMaxAccountAgeDays,
+        })
+      : null;
 
     return prisma.standaloneTask.update({
       where: { id: taskId },
@@ -60,6 +76,7 @@ export class StandaloneAdminService {
         ...(Object.prototype.hasOwnProperty.call(data, 'targetUrl') ? { targetUrl: data.targetUrl || null } : {}),
         ...(data.targetCountries !== undefined ? { targetCountries: Array.isArray(data.targetCountries) ? data.targetCountries : [] } : {}),
         ...(data.isPremiumOnly !== undefined ? { isPremiumOnly } : {}),
+        ...(newUserSettings ? newUserSettings : {}),
         ...((data.requiredFreeTier !== undefined || data.isPremiumOnly !== undefined)
           ? { requiredFreeTier: isPremiumOnly ? 'BASIC' : (data.requiredFreeTier || existingTask.requiredFreeTier) }
           : {}),

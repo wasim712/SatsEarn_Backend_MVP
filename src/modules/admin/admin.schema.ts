@@ -1,4 +1,4 @@
-import { CampaignDevice, FreeTier, PremiumTier, TaskCategory, TaskPlatform } from '@prisma/client';
+﻿import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -11,6 +11,8 @@ export const createCampaignSchema = z.object({
     coverImageUrl: z.string().url().optional(),
     targetCountries: z.array(z.string()).optional(),
     isPremiumOnly: z.boolean().default(false),
+    isNewUserOnly: z.boolean().default(false),
+    newUserMaxAccountAgeDays: z.number().int().positive().optional(),
     requiredFreeTier: z.nativeEnum(FreeTier).default('BASIC'),
     requiredPlatform: z.nativeEnum(CampaignDevice).default('NONE'),
 
@@ -31,6 +33,8 @@ export const updateCampaignSchema = z.object({
     socialHandleTarget: z.string().optional(),
     targetCountries: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
+    isNewUserOnly: z.boolean().optional(),
+    newUserMaxAccountAgeDays: z.number().int().positive().optional().nullable(),
     requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     maxCompletions: z.number().int().positive().optional(),
 
@@ -47,8 +51,6 @@ export const updateCampaignSchema = z.object({
 
 const ProofTypeEnum = z.enum(["SCREENSHOT", "URL", "TEXT_RESPONSE", "API_VERIFIED"]);
 const PremiumTierEnum = z.nativeEnum(PremiumTier);
-const TaskPlatformEnum = z.nativeEnum(TaskPlatform);
-
 export const createTaskSchema = z.object({
   body: z.object({
     title: z.string().min(3),
@@ -57,10 +59,12 @@ export const createTaskSchema = z.object({
     coverImageUrl: z.string().url().optional().or(z.literal('')),
     targetCountries: z.array(z.string()).optional(),
     isPremiumOnly: z.boolean().optional(),
+    isNewUserOnly: z.boolean().optional(),
+    newUserMaxAccountAgeDays: z.number().int().positive().optional(),
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: TaskPlatformEnum.optional(),
+    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
@@ -79,10 +83,12 @@ export const updateTaskSchema = z.object({
     coverImageUrl: z.string().url().optional().or(z.literal('')).nullable(),
     targetCountries: z.array(z.string()).optional(),
     isPremiumOnly: z.boolean().optional(),
+    isNewUserOnly: z.boolean().optional(),
+    newUserMaxAccountAgeDays: z.number().int().positive().optional().nullable(),
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional(),
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: TaskPlatformEnum.optional(),
+    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
@@ -284,4 +290,5 @@ export const updatePlatformSettingsSchema = z.object({
     }).optional(),
   }),
 });
+
 
