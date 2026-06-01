@@ -1,4 +1,4 @@
-﻿import { CampaignDevice, FreeTier, PremiumTier, TaskCategory } from '@prisma/client';
+import { CampaignDevice, FreeTier, PremiumTier, TaskCategory, TaskPlatform } from '@prisma/client';
 import { z } from 'zod';
 
 // --- CAMPAIGNS ---
@@ -64,7 +64,7 @@ export const createTaskSchema = z.object({
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional().default("SCREENSHOT"),
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
+    requiredPlatform: z.nativeEnum(TaskPlatform).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
@@ -88,7 +88,7 @@ export const updateTaskSchema = z.object({
     requiredFreeTier: z.nativeEnum(FreeTier).optional(),
     proofType: ProofTypeEnum.optional(),
     targetUrl: z.string().url().optional().or(z.literal('')),
-    requiredPlatform: z.nativeEnum(CampaignDevice).optional(),
+    requiredPlatform: z.nativeEnum(TaskPlatform).optional(),
     xpReward: z.number().int().min(0).optional(),
     xpRewardOverride: z.number().int().min(0).optional(),
     baseRewardSatsOverride: z.number().int().positive().optional(),
@@ -290,5 +290,7 @@ export const updatePlatformSettingsSchema = z.object({
     }).optional(),
   }),
 });
+
+
 
 
