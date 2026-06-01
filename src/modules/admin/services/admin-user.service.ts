@@ -144,6 +144,7 @@ export class AdminUserService {
     const users = await prisma.user.findMany({
       where: {
         role: 'USER',
+        isVerified: true,
       },
       select: {
         id: true,

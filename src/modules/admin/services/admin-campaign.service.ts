@@ -2,7 +2,16 @@ import { prisma } from '../../../db/prisma.client';
 import { TierUtils } from '../../../utils/tier.utils';
 
 export class AdminCampaignService {
+  private static normalizeNewUserSettings(data: { isNewUserOnly?: boolean; newUserMaxAccountAgeDays?: number | null }) {
+    const isNewUserOnly = Boolean(data.isNewUserOnly);
+    return {
+      isNewUserOnly,
+      newUserMaxAccountAgeDays: isNewUserOnly ? Number(data.newUserMaxAccountAgeDays ?? 7) : null,
+    };
+  }
+
   static async createCampaign(data: any) {
+    const newUserSettings = this.normalizeNewUserSettings(data);
     return await prisma.campaign.create({
       data: {
         title: data.title,
@@ -15,6 +24,7 @@ export class AdminCampaignService {
         targetCountries: data.targetCountries || [],
         requiredPlatform: data.requiredPlatform || 'WEBSITE',
         isPremiumOnly: data.isPremiumOnly || false,
+        ...newUserSettings,
         requiredFreeTier: data.requiredFreeTier || 'BASIC',
         baseRewardSats: 0,
         xpReward: 0,
@@ -177,11 +187,17 @@ export class AdminCampaignService {
       ...safeData
     } = data;
 
+    const newUserSettings = Object.prototype.hasOwnProperty.call(data, 'isNewUserOnly')
+      || Object.prototype.hasOwnProperty.call(data, 'newUserMaxAccountAgeDays')
+      ? this.normalizeNewUserSettings(data)
+      : null;
+
 
     return await prisma.campaign.update({
       where: { id },
       data: {
         ...safeData,
+        ...(newUserSettings ? newUserSettings : {}),
         ...(Object.prototype.hasOwnProperty.call(data, 'maxCompletions')
           ? { maxCompletions: Number(maxCompletions) }
           : {}),

@@ -3,6 +3,13 @@ import { TierUtils } from '../../../utils/tier.utils';
 import { applyDoubleReward, isDoubleRewardActive } from '../../../utils/reward.util';
 
 export class UserCampaignService {
+  private static isWithinNewUserWindow(createdAt: Date, maxAgeDays: number | null | undefined) {
+    if (!maxAgeDays || maxAgeDays <= 0) return false;
+    const accountAgeMs = Date.now() - new Date(createdAt).getTime();
+    const accountAgeDays = Math.floor(accountAgeMs / (24 * 60 * 60 * 1000));
+    return accountAgeDays <= maxAgeDays;
+  }
+
   private static getTierRewardForTask(
     task: { tierRewardMatrixOverride?: unknown; campaign: { tierRewardMatrix?: unknown } },
     activeTier: string | null | undefined,
@@ -18,7 +25,7 @@ export class UserCampaignService {
   static async getAvailableCampaigns(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { totalXp: true, country: true, premiumTier: true, premiumExpiresAt: true },
+      select: { totalXp: true, country: true, premiumTier: true, premiumExpiresAt: true, createdAt: true },
     });
 
     if (!user) throw new Error('User not found');
@@ -61,9 +68,10 @@ export class UserCampaignService {
       .filter((campaign) => {
         if (campaign.totalCompletions >= campaign.maxCompletions) return false;
         if (campaign.tasks.length === 0) return false;
+        if (campaign.isNewUserOnly && !this.isWithinNewUserWindow(user.createdAt, campaign.newUserMaxAccountAgeDays)) return false;
 
         if (campaign.isPremiumOnly) {
-          return true;
+          return hasPremium;
         }
 
         const requiredTierIndex = freeTierOrder.indexOf(campaign.requiredFreeTier);
@@ -259,7 +267,7 @@ export class UserCampaignService {
   static async getCampaignDetails(userId: string, campaignId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true },
+      select: { totalXp: true, premiumTier: true, premiumExpiresAt: true, createdAt: true },
     });
     if (!user) throw new Error('User not found');
 
@@ -284,6 +292,9 @@ export class UserCampaignService {
     const hasPremium = Boolean(activePremiumTier);
     if (campaign.isPremiumOnly && !hasPremium) {
       throw new Error('This campaign is available for premium members only.');
+    }
+    if (campaign.isNewUserOnly && !this.isWithinNewUserWindow(user.createdAt, campaign.newUserMaxAccountAgeDays)) {
+      throw new Error('This campaign is only available to new users.');
     }
     const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const doubleRewardsActive = isDoubleRewardActive(campaign.doubleRewardsStartAt, campaign.doubleRewardsEndAt);

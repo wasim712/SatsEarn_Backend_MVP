@@ -250,7 +250,7 @@ model PlatformSettings {
   // The old global fallback
   referralBonusPercent Int      @default(5) 
   
-  // Ã°Å¸Å¡â‚¬ NEW: The exact % commission based on the referrer's tier
+  // ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ NEW: The exact % commission based on the referrer's tier
   tierReferralMatrix   Json?    
   tierMinWithdrawalMatrix Json?
   premiumMonthlySatsMatrix Json?
@@ -275,8 +275,10 @@ model StandaloneTask {
   targetCountries      String[]
   isPremiumOnly        Boolean        @default(false)
   requiredFreeTier     FreeTier       @default(BASIC)
-  requiredPlatform     TaskPlatform   @default(WEBSITE)
+  requiredPlatform     CampaignDevice @default(NONE)
   proofType            ProofType      @default(SCREENSHOT)
+  isNewUserOnly        Boolean        @default(false)
+  newUserMaxAccountAgeDays Int?
   xpReward             Int            @default(0)
   tierRewardMatrix     Json
   doubleRewardsStartAt DateTime?
@@ -349,6 +351,8 @@ model Campaign {
   // --- THE ACCESS GATES ---
   requiredFreeTier   FreeTier     @default(BASIC) // E.g., "Must be at least Silver"
   isPremiumOnly      Boolean      @default(false) // E.g., "Must hold ANY paid subscription"
+  isNewUserOnly      Boolean      @default(false)
+  newUserMaxAccountAgeDays Int?
   
   // --- THE ECONOMICS (Explicit Pricing Matrix) ---
   baseRewardSats     Int          // The anchor for calculating referral commissions
@@ -399,10 +403,10 @@ model Submission {
   taskId           String
   task             Task             @relation(fields: [taskId], references: [id])
   ipAddress        String?
-  // Ã°Å¸Å¡â‚¬ CHANGED: Made optional (Added '?') because text responses don't have images!
+  // ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ CHANGED: Made optional (Added '?') because text responses don't have images!
   screenshotUrl    String?          
   
-  // Ã°Å¸Å¡â‚¬ NEW: Where we store the URL or Text Response from the user
+  // ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ NEW: Where we store the URL or Text Response from the user
   proofText        String?          @db.Text
   
   imageHash        String?          

@@ -1,4 +1,4 @@
-﻿import { SubmissionStatus, TaskPlatform, type User } from '@prisma/client';
+﻿import { CampaignDevice, SubmissionStatus, type User } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { getReferralBonusAmount, getReferralBonusMsats, getReviewReleaseAt, splitMsats } from '../../utils/submission-flow.util';
@@ -51,13 +51,13 @@ async function getUserUniqueActiveDaysLast30Days(userId: string) {
 }
 
 export const ALL_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER'] as const;
-const ALLOWED_STANDALONE_PLATFORMS: readonly TaskPlatform[] = ['TWITTER', 'YOUTUBE', 'INSTAGRAM', 'TELEGRAM', 'FACEBOOK', 'LINKEDIN', 'APP_STORE', 'PLAY_STORE', 'WEBSITE'];
+const ALLOWED_STANDALONE_PLATFORMS: readonly CampaignDevice[] = ['NONE', 'DESKTOP', 'ANDROID', 'IOS'];
 
-export function normalizeStandaloneRequiredPlatform(input: unknown): TaskPlatform {
-  const normalized = String(input || 'WEBSITE').trim().toUpperCase();
-  return ALLOWED_STANDALONE_PLATFORMS.includes(normalized as TaskPlatform)
-    ? (normalized as TaskPlatform)
-    : 'WEBSITE';
+export function normalizeStandaloneRequiredPlatform(input: unknown): CampaignDevice {
+  const normalized = String(input || 'NONE').trim().toUpperCase();
+  return ALLOWED_STANDALONE_PLATFORMS.includes(normalized as CampaignDevice)
+    ? (normalized as CampaignDevice)
+    : 'NONE';
 }
 
 export function normalizeTierRewardMatrix(input: unknown) {
@@ -289,3 +289,4 @@ export function getStandaloneUnlockAt(status: SubmissionStatus) {
 export function getStandaloneDisplayReward(task: { tierRewardMatrix: unknown }, user: Pick<User, 'totalXp' | 'premiumTier' | 'premiumExpiresAt'>) {
   return applyDoubleReward(getStandaloneRewardForUser(task.tierRewardMatrix, user), false);
 }
+

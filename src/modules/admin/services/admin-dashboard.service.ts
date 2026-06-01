@@ -26,24 +26,27 @@ export class AdminDashboardService {
       recentSubmissions,
       recentTransactions,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: 'USER' } }),
-      prisma.user.count({ where: { role: 'USER', isActive: true } }),
-      prisma.user.count({ where: { role: 'USER', isActive: false } }),
+      prisma.user.count({ where: { role: 'USER', isVerified: true } }),
+      prisma.user.count({ where: { role: 'USER', isVerified: true, isActive: true } }),
+      prisma.user.count({ where: { role: 'USER', isVerified: true, isActive: false } }),
       prisma.user.count({
         where: {
           role: 'USER',
+          isVerified: true,
           createdAt: { gte: twentyFourHoursAgo },
         },
       }),
       prisma.user.count({
         where: {
           role: 'USER',
+          isVerified: true,
           lastActivityAt: { gte: twentyFourHoursAgo },
         },
       }),
       prisma.user.count({
         where: {
           role: 'USER',
+          isVerified: true,
           premiumExpiresAt: { gt: new Date() },
         },
       }),
@@ -70,13 +73,13 @@ export class AdminDashboardService {
       }),
       prisma.withdrawal.count({ where: { status: 'PENDING' } }),
       prisma.withdrawal.count({ where: { status: 'PAID' } }),
-      prisma.user.aggregate({ _sum: { balancePending: true } }),
+      prisma.user.aggregate({ _sum: { balancePending: true }, where: { role: 'USER', isVerified: true } }),
       prisma.withdrawal.aggregate({
         _sum: { amountSats: true },
         where: { status: 'PAID' },
       }),
       prisma.user.findMany({
-        where: { role: 'USER', createdAt: { gte: sevenDaysAgo } },
+        where: { role: 'USER', isVerified: true, createdAt: { gte: sevenDaysAgo } },
         select: { createdAt: true },
       }),
       prisma.submission.findMany({

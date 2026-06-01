@@ -59,6 +59,13 @@ async function getUserUniqueActiveDaysLast30Days(db: typeof prisma, userId: stri
 
 
 export class UserSubmissionService {
+  private static isWithinNewUserWindow(createdAt: Date, maxAgeDays: number | null | undefined) {
+    if (!maxAgeDays || maxAgeDays <= 0) return false;
+    const accountAgeMs = Date.now() - new Date(createdAt).getTime();
+    const accountAgeDays = Math.floor(accountAgeMs / (24 * 60 * 60 * 1000));
+    return accountAgeDays <= maxAgeDays;
+  }
+
   static async getTaskStatus(userId: string, taskId: string) {
     const submission = await prisma.submission.findUnique({
       where: { userId_taskId: { userId, taskId } },
@@ -95,6 +102,7 @@ export class UserSubmissionService {
         id: true,
         referredById: true,
         fullName: true,
+        createdAt: true,
         totalXp: true,
         currentStreak: true,
         lastActivityAt: true,
@@ -112,6 +120,9 @@ export class UserSubmissionService {
     if (!task) throw new Error('Task not found.');
     if (task.campaign.totalCompletions >= task.campaign.maxCompletions) {
       throw new Error('This campaign has reached its maximum budget and is closed.');
+    }
+    if (task.campaign.isNewUserOnly && !this.isWithinNewUserWindow(user.createdAt, task.campaign.newUserMaxAccountAgeDays)) {
+      throw new Error('This campaign is only available to new users.');
     }
 
     const existing = await prisma.submission.findUnique({
