@@ -185,6 +185,10 @@ id               String   @id @default(uuid())
   lastActivityAt   DateTime @default(now())
   registrationIp   String?  // The IP they used to create the account
   lastIpAddress    String?  // The IP they last logged in with
+  hasCompletedOnboarding Boolean @default(false)
+  onboardingCompletedAt DateTime?
+  hasSkippedOnboarding Boolean @default(false)
+  onboardingSkippedAt DateTime?
   // --- CONNECTED SOCIAL ACCOUNTS ---
   twitterHandle    String?
   instagramHandle  String?

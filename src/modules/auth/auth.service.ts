@@ -4,6 +4,22 @@ import { EmailService } from './email.service';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { CryptoUtil } from '../../utils/crypto.util';
+import { TierUtils } from '../../utils/tier.utils';
+
+type AuthUserPayload = {
+    id: string;
+    email: string;
+    fullName: string | null;
+    country: string | null;
+    referralCode: string;
+    role: string;
+    activeTier?: string;
+    isPremium?: boolean;
+    premiumExpiresAt?: Date | null;
+    hasCompletedOnboarding: boolean;
+    hasSkippedOnboarding: boolean;
+    shouldShowOnboarding: boolean;
+};
 
 export interface SignUpInput {
     email: string;
@@ -17,6 +33,38 @@ export interface SignUpInput {
 }
 
 export class AuthService {
+
+    private static buildAuthUser(user: {
+        id: string;
+        email: string;
+        fullName: string | null;
+        country: string | null;
+        referralCode: string;
+        role: string;
+        premiumExpiresAt: Date | null;
+        totalXp: number;
+        hasCompletedOnboarding: boolean;
+        hasSkippedOnboarding: boolean;
+    }): AuthUserPayload {
+        const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
+        const isPremium = Boolean(activePremiumTier);
+        const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
+
+        return {
+            id: user.id,
+            email: user.email,
+            fullName: user.fullName,
+            country: user.country,
+            referralCode: user.referralCode,
+            role: user.role,
+            activeTier,
+            isPremium,
+            premiumExpiresAt: user.premiumExpiresAt,
+            hasCompletedOnboarding: user.hasCompletedOnboarding,
+            hasSkippedOnboarding: user.hasSkippedOnboarding,
+            shouldShowOnboarding: !user.hasCompletedOnboarding && !user.hasSkippedOnboarding,
+        };
+    }
     
     // Helper to generate a 6-digit OTP
     private static generateOTP(): string {
@@ -152,7 +200,19 @@ export class AuthService {
                 otpCode: null, 
                 otpExpiresAt: null,
                 balanceLocked: settings.welcomeBonusSats
-            }
+            },
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                country: true,
+                referralCode: true,
+                role: true,
+                premiumExpiresAt: true,
+                totalXp: true,
+                hasCompletedOnboarding: true,
+                hasSkippedOnboarding: true,
+            },
         });
 
         // 4. Fire Welcome Email
@@ -162,7 +222,7 @@ export class AuthService {
         // 5. Generate Session Token
         const sessionToken = this.generateToken(activatedUser.id, activatedUser.role);
 
-        return { session: sessionToken, user: activatedUser };
+        return { session: sessionToken, user: this.buildAuthUser(activatedUser) };
     }
 
     // ==========================================
@@ -188,12 +248,24 @@ export class AuthService {
         // 🚀 NEW: Update their last known IP address so the Fraud Engine is accurate
         const updatedUser = await prisma.user.update({
             where: { id: user.id },
-            data: { lastIpAddress: CryptoUtil.encrypt(clientIp) }
+            data: { lastIpAddress: CryptoUtil.encrypt(clientIp) },
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                country: true,
+                referralCode: true,
+                role: true,
+                premiumExpiresAt: true,
+                totalXp: true,
+                hasCompletedOnboarding: true,
+                hasSkippedOnboarding: true,
+            },
         });
 
         const sessionToken = this.generateToken(user.id, user.role);
 
-        return { session: sessionToken, user: updatedUser };
+        return { session: sessionToken, user: this.buildAuthUser(updatedUser) };
     }
 
     // ==========================================
