@@ -45,7 +45,7 @@ export class StandaloneUserService {
       .filter((task) => {
         if (task.targetCountries.length > 0 && !task.targetCountries.includes(user.country || 'IN')) return false;
         if (task.isNewUserOnly && !this.isWithinNewUserWindow(user.createdAt, task.newUserMaxAccountAgeDays)) return false;
-        if (task.isPremiumOnly) return hasPremium;
+        if (task.isPremiumOnly) return true;
         const requiredTierIndex = freeTierOrder.indexOf(task.requiredFreeTier);
         return requiredTierIndex <= userFreeTierIndex || hasPremium;
       })

@@ -66,12 +66,20 @@ export class UserCampaignService {
 
     return campaigns
       .filter((campaign) => {
-        if (campaign.totalCompletions >= campaign.maxCompletions) return false;
+        const userHasCompletedOrStartedCampaign = campaign.tasks.some((task) => {
+          const latestSubmission = task.submissions[0];
+          return Boolean(latestSubmission && latestSubmission.status !== 'REJECTED');
+        });
+
+        if (campaign.totalCompletions >= campaign.maxCompletions && !userHasCompletedOrStartedCampaign) {
+          return false;
+        }
+
         if (campaign.tasks.length === 0) return false;
         if (campaign.isNewUserOnly && !this.isWithinNewUserWindow(user.createdAt, campaign.newUserMaxAccountAgeDays)) return false;
 
         if (campaign.isPremiumOnly) {
-          return hasPremium;
+          return true;
         }
 
         const requiredTierIndex = freeTierOrder.indexOf(campaign.requiredFreeTier);
