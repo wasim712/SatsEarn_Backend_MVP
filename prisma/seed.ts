@@ -15,6 +15,16 @@ const pool = new Pool({
 const adapter = new PrismaPg(pool as any);
 const prisma = new PrismaClient({ adapter });
 
+function getRequiredEnv(name: string) {
+  const value = process.env[name]?.trim();
+
+  if (!value) {
+    throw new Error(`${name} environment variable is missing`);
+  }
+
+  return value;
+}
+
 async function upsertUser(params: {
   email: string;
   password: string;
@@ -29,26 +39,31 @@ async function upsertUser(params: {
   premiumTier?: PremiumTier | null;
   premiumExpiresAt?: Date | null;
   lastActivityAt?: Date;
+  updatePassword?: boolean;
 }) {
   const passwordHash = await bcrypt.hash(params.password, 10);
+  const updateData: Record<string, unknown> = {
+    fullName: params.fullName,
+    username: params.username,
+    referralCode: params.referralCode,
+    referredById: params.referredById ?? null,
+    role: params.role || 'USER',
+    totalXp: params.totalXp ?? 0,
+    isVerified: params.isVerified ?? true,
+    country: params.country || 'IN',
+    premiumTier: params.premiumTier ?? null,
+    premiumExpiresAt: params.premiumExpiresAt ?? null,
+    lastActivityAt: params.lastActivityAt,
+    authProvider: 'EMAIL',
+  };
+
+  if (params.updatePassword) {
+    updateData.passwordHash = passwordHash;
+  }
 
   return prisma.user.upsert({
     where: { email: params.email },
-    update: {
-      passwordHash,
-      fullName: params.fullName,
-      username: params.username,
-      referralCode: params.referralCode,
-      referredById: params.referredById ?? null,
-      role: params.role || 'USER',
-      totalXp: params.totalXp ?? 0,
-      isVerified: params.isVerified ?? true,
-      country: params.country || 'IN',
-      premiumTier: params.premiumTier ?? null,
-      premiumExpiresAt: params.premiumExpiresAt ?? null,
-      lastActivityAt: params.lastActivityAt,
-      authProvider: 'EMAIL',
-    },
+    update: updateData,
     create: {
       email: params.email,
       passwordHash,
@@ -66,70 +81,6 @@ async function upsertUser(params: {
       lastActivityAt: params.lastActivityAt,
     },
   });
-}
-
-async function createSequentialActivityForReferralUser(userId: string, days: number) {
-  await prisma.standaloneSubmission.deleteMany({ where: { userId } });
-
-  for (let offset = 0; offset < days; offset++) {
-    const submittedAt = new Date();
-    submittedAt.setUTCDate(submittedAt.getUTCDate() - offset);
-    submittedAt.setUTCHours(12, 0, 0, 0);
-
-    const standaloneTask = await prisma.standaloneTask.upsert({
-      where: { id: `seed-standalone-activity-task-${offset + 1}` },
-      update: {
-        title: `Seed Activity Task ${offset + 1}`,
-        description: 'Used only for referral activity seeding.',
-        category: 'SOCIAL',
-        targetCountries: ['IN'],
-        tierRewardMatrix: {
-          BASIC: 10,
-          COPPER: 10,
-          BRONZE: 10,
-          SILVER: 10,
-          GOLD: 10,
-          PLATINUM: 10,
-          DIAMOND: 10,
-          CROWN: 10,
-          ELITE: 10,
-          FOUNDER: 10,
-        },
-        isActive: true,
-      },
-      create: {
-        id: `seed-standalone-activity-task-${offset + 1}`,
-        title: `Seed Activity Task ${offset + 1}`,
-        description: 'Used only for referral activity seeding.',
-        category: 'SOCIAL',
-        targetCountries: ['IN'],
-        tierRewardMatrix: {
-          BASIC: 10,
-          COPPER: 10,
-          BRONZE: 10,
-          SILVER: 10,
-          GOLD: 10,
-          PLATINUM: 10,
-          DIAMOND: 10,
-          CROWN: 10,
-          ELITE: 10,
-          FOUNDER: 10,
-        },
-        isActive: true,
-      },
-    });
-
-    await prisma.standaloneSubmission.create({
-      data: {
-        userId,
-        standaloneTaskId: standaloneTask.id,
-        proofText: `Seed referral activity day ${offset + 1}`,
-        confidenceScore: 100,
-        status: 'WITHDRAWABLE',
-        submittedAt,
-      } as any,
-    });
-  }
 }
 
 async function main() {
@@ -256,74 +207,48 @@ async function main() {
     },
   });
 
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    throw new Error('ADMIN_PASSWORD environment variable is missing');
-  }
+  const adminEmail = 'admin@satsearn.com';
+  const adminPassword = getRequiredEnv('ADMIN_PASSWORD');
+  const adminFullName = process.env.ADMIN_FULL_NAME?.trim() || 'SatsEarn Admin';
+  const adminUsername = process.env.ADMIN_USERNAME?.trim() || 'admin';
+  const adminReferralCode = process.env.ADMIN_REFERRAL_CODE?.trim() || 'ADMIN001';
+  const adminCountry = process.env.ADMIN_COUNTRY?.trim() || 'India';
+  const resetAdminPassword = process.env.ADMIN_RESET_PASSWORD === 'true';
 
-  await upsertUser({
-    email: 'admin@satsearn.com',
+  const admin = await upsertUser({
+    email: adminEmail,
     password: adminPassword,
-    fullName: 'Saksham Arya',
-    username: 'admin',
-    referralCode: 'ADMIN001',
+    fullName: adminFullName,
+    username: adminUsername,
+    referralCode: adminReferralCode,
     role: 'SUPER_ADMIN',
     totalXp: 10000,
-    country: 'IN',
+    country: adminCountry,
+    updatePassword: resetAdminPassword,
   });
 
   const saksham = await upsertUser({
     email: 'sakshamarya015@gmail.com',
     password: 'SecurePassword123!',
-    fullName: 'Saksham Referral Tester',
+    fullName: 'Saksham Arya',
     username: 'saksham1',
     referralCode: 'SAKSHAM1',
     totalXp: 120000,
-    country: 'IN',
+    country: 'India',
     premiumTier: 'CROWN',
     premiumExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    updatePassword: true,
   });
-
-  const referralChild = await upsertUser({
-    email: 's',
-    password: 'SecurePassword123!',
-    fullName: 'Referral Child Tester',
-    username: 'refchild1',
-    referralCode: 'REFCHILD',
-    referredById: saksham.id,
-    totalXp: 500,
-    country: 'IN',
-  });
-
-  await upsertUser({
-    email: 'referralchild2@example.com',
-    password: 'SecurePassword123!',
-    fullName: 'Referral Child Tester Two',
-    username: 'refchild2',
-    referralCode: 'REFCHD2',
-    referredById: saksham.id,
-    totalXp: 1500,
-    country: 'IN',
-  });
-
-  await upsertUser({
-    email: 'floattester@example.com',
-    password: 'SecurePassword123!',
-    fullName: 'Float Referral Tester',
-    username: 'fltref1',
-    referralCode: 'FLOAT001',
-    totalXp: 2500,
-    country: 'IN',
-  });
-
-  await createSequentialActivityForReferralUser(referralChild.id, 10);
 
   console.log('✅ Platform settings seeded');
-  console.log('✅ Admin account seeded: admin@satsearn.com');
-  console.log('✅ Referral test account seeded: sakshamarya015@gmail.com / SecurePassword123!');
-  console.log(`✅ Referral code for testing: ${saksham.referralCode}`);
-  console.log('✅ Additional test accounts seeded: referralchild@example.com, referralchild2@example.com, floattester@example.com');
-  console.log('✅ Added 10 sequential active days for referralchild@example.com');
+  console.log(`✅ Admin account seeded: ${admin.email}`);
+  console.log(
+    resetAdminPassword
+      ? '✅ Admin password was updated from environment'
+      : '✅ Admin password was left unchanged on existing records'
+  );
+  console.log(`✅ Admin referral code: ${admin.referralCode}`);
+  console.log(`✅ Member account seeded: ${saksham.email}`);
 }
 
 main()
