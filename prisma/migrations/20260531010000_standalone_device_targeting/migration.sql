@@ -1,4 +1,4 @@
-﻿-- AlterTable
+-- AlterTable
 ALTER TABLE "Campaign" ADD COLUMN     "isNewUserOnly" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "newUserMaxAccountAgeDays" INTEGER;
 

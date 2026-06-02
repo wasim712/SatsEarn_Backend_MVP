@@ -79,6 +79,17 @@ function decryptProfileFields<T extends Record<string, any>>(user: T | null): T 
   };
 }
 
+function buildOnboardingState(user: {
+  hasCompletedOnboarding: boolean;
+  hasSkippedOnboarding: boolean;
+}) {
+  return {
+    hasCompletedOnboarding: user.hasCompletedOnboarding,
+    hasSkippedOnboarding: user.hasSkippedOnboarding,
+    shouldShowOnboarding: !user.hasCompletedOnboarding && !user.hasSkippedOnboarding,
+  };
+}
+
 export class UserAccountService {
   static async getPremiumPricing() {
     const settings = await prisma.platformSettings.findFirst();
@@ -117,6 +128,8 @@ export class UserAccountService {
         telegramHandle: true,
         discordHandle: true,
         referralCode: true,
+        hasCompletedOnboarding: true,
+        hasSkippedOnboarding: true,
         createdAt: true,
         totalXp: true,
         balanceAvailable: true,
@@ -154,7 +167,82 @@ export class UserAccountService {
       balanceAvailable: user.balanceAvailable,
       premiumPricing: pricing,
       billingHistory: user.billingRecords,
+      ...buildOnboardingState(user),
     };
+  }
+
+  static async completeOnboarding(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        hasCompletedOnboarding: true,
+        hasSkippedOnboarding: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.hasSkippedOnboarding) {
+      return buildOnboardingState(user);
+    }
+
+    if (user.hasCompletedOnboarding) {
+      return buildOnboardingState(user);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        hasCompletedOnboarding: true,
+        onboardingCompletedAt: new Date(),
+      },
+      select: {
+        hasCompletedOnboarding: true,
+        hasSkippedOnboarding: true,
+      },
+    });
+
+    return buildOnboardingState(updatedUser);
+  }
+
+  static async skipOnboarding(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        hasCompletedOnboarding: true,
+        hasSkippedOnboarding: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.hasCompletedOnboarding) {
+      return buildOnboardingState(user);
+    }
+
+    if (user.hasSkippedOnboarding) {
+      return buildOnboardingState(user);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        hasSkippedOnboarding: true,
+        onboardingSkippedAt: new Date(),
+      },
+      select: {
+        hasCompletedOnboarding: true,
+        hasSkippedOnboarding: true,
+      },
+    });
+
+    return buildOnboardingState(updatedUser);
   }
 
   static async upgradePremiumUsingSats(userId: string, data: { plan: PremiumTier; billingCycle: BillingCycle }) {

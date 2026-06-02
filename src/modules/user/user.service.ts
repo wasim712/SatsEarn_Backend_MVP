@@ -105,6 +105,14 @@ export class UserService {
     return await UserAccountService.getProfile(userId);
   }
 
+  static async completeOnboarding(userId: string) {
+    return await UserAccountService.completeOnboarding(userId);
+  }
+
+  static async skipOnboarding(userId: string) {
+    return await UserAccountService.skipOnboarding(userId);
+  }
+
   static async getUserDashboard(userId: string) {
     const platformSettings = await prisma.platformSettings.findFirst({
       select: { btcPriceUsd: true },

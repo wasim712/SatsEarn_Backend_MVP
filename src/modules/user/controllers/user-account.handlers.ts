@@ -14,6 +14,14 @@ export const userAccountHandlers = {
     try { res.status(200).json(await UserService.getUserProfile(req.user!.id)); }
     catch (error: any) { res.status(404).json({ error: error.message }); }
   },
+  async completeOnboarding(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.completeOnboarding(req.user!.id)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
+  async skipOnboarding(req: Request, res: Response) {
+    try { res.status(200).json(await UserService.skipOnboarding(req.user!.id)); }
+    catch (error: any) { res.status(400).json({ error: error.message }); }
+  },
   async updateProfile(req: Request, res: Response) {
     try { res.status(200).json({ message: 'Profile updated', profile: await UserService.updateProfile(req.user!.id, req.body) }); }
     catch (error: any) { res.status(400).json({ error: error.message }); }

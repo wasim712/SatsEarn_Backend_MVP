@@ -27,6 +27,8 @@ const upload = multer({
 router.use(requireAuth);
 
 router.get('/profile', UserController.getProfile);
+router.post('/onboarding/complete', UserController.completeOnboarding);
+router.post('/onboarding/skip', UserController.skipOnboarding);
 router.patch('/profile', validate(updateProfileSchema), UserController.updateProfile);
 router.get('/premium-interest', UserController.getPremiumRequests);
 router.post('/premium-interest', validate(premiumInterestSchema), UserController.registerPremiumInterest);

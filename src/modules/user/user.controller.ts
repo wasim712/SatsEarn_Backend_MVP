@@ -6,6 +6,8 @@ export class UserController {
   static async getDashboard(req: Request, res: Response) { return userAccountHandlers.getDashboard(req, res); }
   static async getLeaderboard(req: Request, res: Response) { return userAccountHandlers.getLeaderboard(req, res); }
   static async getProfile(req: Request, res: Response) { return userAccountHandlers.getProfile(req, res); }
+  static async completeOnboarding(req: Request, res: Response) { return userAccountHandlers.completeOnboarding(req, res); }
+  static async skipOnboarding(req: Request, res: Response) { return userAccountHandlers.skipOnboarding(req, res); }
   static async updateProfile(req: Request, res: Response) { return userAccountHandlers.updateProfile(req, res); }
   static async registerPremiumInterest(req: Request, res: Response) { return userAccountHandlers.registerPremiumInterest(req, res); }
   static async upgradePremiumUsingSats(req: Request, res: Response) { return userAccountHandlers.upgradePremiumUsingSats(req, res); }
