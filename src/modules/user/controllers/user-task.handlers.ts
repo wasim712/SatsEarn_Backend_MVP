@@ -139,15 +139,15 @@ export const userTaskHandlers = {
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
   async getTodayQuiz(req: Request, res: Response) {
-    try { res.status(200).json(await UserService.getTodayQuiz(req.user!.id)); }
+    try { res.status(200).json(await UserService.getTodayQuiz(req.user!.id, typeof req.query.date === 'string' ? req.query.date : undefined)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
   async submitTodayQuizAnswer(req: Request, res: Response) {
-    try { res.status(200).json(await UserService.submitDailyQuizAnswer(req.user!.id, req.body.questionId, req.body.answer)); }
+    try { res.status(200).json(await UserService.submitDailyQuizAnswer(req.user!.id, req.body.questionId, req.body.answer, req.body.date)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
   async submitTodayQuiz(req: Request, res: Response) {
-    try { res.status(200).json(await UserService.submitDailyQuiz(req.user!.id, req.body.answers)); }
+    try { res.status(200).json(await UserService.submitDailyQuiz(req.user!.id, req.body.answers, req.body.date)); }
     catch (error: any) { res.status(400).json({ error: error.message }); }
   },
 };

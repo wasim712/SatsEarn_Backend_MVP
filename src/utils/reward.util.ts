@@ -53,6 +53,10 @@ export function evaluateDailyActivityStreak(lastActivityAt: Date | null | undefi
     return { nextStreak: 1, didCountToday: false, reset: false };
   }
 
+   if (currentStreak <= 0) {
+    return { nextStreak: 1, didCountToday: false, reset: false };
+  }
+
   const diffDays = Math.floor((today.getTime() - lastActiveDay.getTime()) / (24 * 60 * 60 * 1000));
 
   if (diffDays <= 0) {

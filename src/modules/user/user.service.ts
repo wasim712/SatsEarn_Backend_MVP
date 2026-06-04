@@ -455,16 +455,16 @@ export class UserService {
     return await UserQuizService.startTaskFlow(userId, taskId);
   }
 
-  static async getTodayQuiz(userId: string) {
-    return await UserQuizService.getTodayQuiz(userId);
+  static async getTodayQuiz(userId: string, dateKey?: string) {
+    return await UserQuizService.getTodayQuiz(userId, dateKey);
   }
 
-  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string) {
-    return await UserQuizService.submitDailyQuizAnswer(userId, questionId, answer);
+  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string, dateKey?: string) {
+    return await UserQuizService.submitDailyQuizAnswer(userId, questionId, answer, dateKey);
   }
 
-  static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>) {
-    return await UserQuizService.submitDailyQuiz(userId, userAnswers);
+  static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>, dateKey?: string) {
+    return await UserQuizService.submitDailyQuiz(userId, userAnswers, dateKey);
   }
 
   static async getUserWithdrawals(userId: string) {

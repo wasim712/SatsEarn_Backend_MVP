@@ -33,12 +33,26 @@ function getQuizAttemptMultiplier(attemptCount: number) {
   return 0.1;
 }
 
-function getQuizDateRange() {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  return { today, tomorrow };
+function normalizeQuizDateKey(dateKey?: string) {
+  const normalized = (dateKey || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function findQuizByDate(dateKey?: string) {
+  const quizDateKey = normalizeQuizDateKey(dateKey);
+
+  const quizzes = await prisma.dailyQuiz.findMany({
+    where: {
+      isActive: true,
+    },
+    include: { questions: { orderBy: { order: 'asc' } } },
+  });
+
+  return quizzes.find((quiz) => quiz.date.toISOString().slice(0, 10) === quizDateKey) || null;
 }
 
 function normalizePersistedAnswers(rawAnswers: unknown): PersistedQuizAnswer[] {
@@ -74,10 +88,11 @@ function normalizePersistedAnswers(rawAnswers: unknown): PersistedQuizAnswer[] {
 }
 
 function buildQuizPayload(
-  quiz: { id: string; title: string; rewardSats: number; xpReward: number; questions: QuizQuestionEntity[] },
+  quiz: { id: string; title: string; rewardSats: number; xpReward: number; date: Date; questions: QuizQuestionEntity[] },
 ) {
   return {
     id: quiz.id,
+    date: quiz.date.toISOString().slice(0, 10),
     title: quiz.title,
     description: 'Keep guessing until you get each answer right. More wrong tries reduce that question\'s reward.',
     rewardSats: quiz.rewardSats,
@@ -258,19 +273,8 @@ export class UserQuizService {
     };
   }
 
-  static async getTodayQuiz(userId: string) {
-    const { today, tomorrow } = getQuizDateRange();
-
-    const quiz = await prisma.dailyQuiz.findFirst({
-      where: {
-        isActive: true,
-        date: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-      include: { questions: { orderBy: { order: 'asc' } } },
-    });
+  static async getTodayQuiz(userId: string, dateKey?: string) {
+    const quiz = await findQuizByDate(dateKey);
 
     if (!quiz) {
       throw new Error('There is no active quiz for today. Check back tomorrow!');
@@ -305,19 +309,8 @@ export class UserQuizService {
     };
   }
 
-  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string) {
-    const { today, tomorrow } = getQuizDateRange();
-
-    const quiz = await prisma.dailyQuiz.findFirst({
-      where: {
-        isActive: true,
-        date: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-      include: { questions: { orderBy: { order: 'asc' } } },
-    });
+  static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string, dateKey?: string) {
+    const quiz = await findQuizByDate(dateKey);
 
     if (!quiz) throw new Error('Quiz not found or has expired.');
 
@@ -423,19 +416,9 @@ export class UserQuizService {
   static async submitDailyQuiz(
     userId: string,
     userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
+    dateKey?: string,
   ) {
-    const { today, tomorrow } = getQuizDateRange();
-
-    const quiz = await prisma.dailyQuiz.findFirst({
-      where: {
-        isActive: true,
-        date: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-      include: { questions: true },
-    });
+    const quiz = await findQuizByDate(dateKey);
 
     if (!quiz) throw new Error('Quiz not found or has expired.');
     return this.finalizeDailyQuiz(userId, quiz.id, userAnswers);

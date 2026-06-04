@@ -38,11 +38,13 @@ export const submitDailyQuizAnswerSchema = z.object({
   body: z.object({
     questionId: z.string().uuid("Invalid Question ID format"),
     answer: z.string().min(1, "Answer cannot be empty"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
   }),
 });
 
 export const submitDailyQuizSchema = z.object({
   body: z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
     answers: z.array(
       z.object({
         questionId: z.string().uuid("Invalid Question ID format"),
