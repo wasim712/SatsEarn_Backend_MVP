@@ -64,6 +64,17 @@ export class UserService {
           totalXp: { increment: cappedXp },
         },
       });
+
+      await tx.ledger.create({
+        data: {
+          userId,
+          amountSats: 0,
+          amountMsats: 0,
+          type: 'MINIGAME_XP_REWARD',
+          description,
+          referenceId: null,
+        },
+      });
     });
 
     await NotificationService.notifyUser(

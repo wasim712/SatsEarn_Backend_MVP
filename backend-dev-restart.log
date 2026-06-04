@@ -1,0 +1,401 @@
+
+> sats_earn_backend_mvp@1.0.0 dev
+> npx prisma generate && nodemon --watch src --ext ts --exec ts-node src/server.ts
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma\schema.prisma.
+
+✔ Generated Prisma Client (v7.7.0) to .\node_modules\@prisma\client in 202ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+[33m[nodemon] 3.1.14[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): src\**\*[39m
+[33m[nodemon] watching extensions: ts[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+◇ injected env (12) from .env // tip: ⌘ override existing { override: true }
+🚀 Registering SIGINT handler...
+Server is running on http://localhost:8080
+Background worker initialized. Jobs scheduled for [*/2 * * * *]
+(node:26784) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[CRON] Executing review and unlock sweeps...
+[9:40:01 pm] POST /api/auth/signin [32m200[0m - 3732ms
+[9:40:01 pm] POST /api/admin/tasks/standalone [32m201[0m - 544ms
+[9:40:04 pm] GET /api/admin/notifications [32m200[0m - 666ms
+[9:40:05 pm] GET /api/admin/notifications [32m200[0m - 518ms
+[9:40:39 pm] GET / [33m404[0m - 1ms
+[9:40:40 pm] GET / [33m404[0m - 1ms
+[9:40:41 pm] GET / [33m404[0m - 0ms
+[9:40:43 pm] GET / [33m404[0m - 1ms
+[9:40:45 pm] GET / [33m404[0m - 0ms
+[9:40:47 pm] GET / [33m404[0m - 0ms
+[9:40:49 pm] GET / [33m404[0m - 1ms
+[9:40:51 pm] GET / [33m404[0m - 0ms
+[9:40:51 pm] POST /api/admin/campaigns/upload-cover [32m200[0m - 5945ms
+[9:40:52 pm] POST /api/admin/tasks/standalone [32m201[0m - 547ms
+[9:40:53 pm] GET / [33m404[0m - 0ms
+[9:40:55 pm] GET / [33m404[0m - 0ms
+[9:40:57 pm] GET / [33m404[0m - 1ms
+[9:40:57 pm] GET /api/admin/notifications [32m200[0m - 635ms
+[9:40:57 pm] GET /api/admin/notifications [32m200[0m - 619ms
+[9:40:59 pm] GET / [33m404[0m - 1ms
+[9:41:01 pm] GET / [33m404[0m - 1ms
+[9:41:01 pm] GET /api/admin/tasks [32m200[0m - 4335ms
+[9:41:02 pm] GET /api/admin/tasks [32m200[0m - 817ms
+[9:41:09 pm] GET /api/admin/tasks/791027b3-17cc-42e5-9a8d-6df840da4bbf [32m200[0m - 630ms
+[9:41:09 pm] GET /api/admin/tasks/791027b3-17cc-42e5-9a8d-6df840da4bbf [32m200[0m - 633ms
+[9:41:21 pm] PATCH /api/admin/tasks/791027b3-17cc-42e5-9a8d-6df840da4bbf [32m200[0m - 1004ms
+[9:41:24 pm] GET /api/admin/tasks [32m200[0m - 717ms
+[9:41:25 pm] GET /api/admin/tasks [32m200[0m - 613ms
+[9:41:57 pm] GET /api/admin/notifications [32m200[0m - 680ms
+[9:41:58 pm] GET /api/admin/notifications [32m200[0m - 613ms
+[CRON] Executing review and unlock sweeps...
+[9:43:04 pm] GET /api/admin/notifications [32m200[0m - 644ms
+[9:43:05 pm] GET /api/admin/notifications [32m200[0m - 542ms
+[CRON] Executing review and unlock sweeps...
+[9:44:04 pm] GET /api/admin/notifications [32m200[0m - 765ms
+[9:44:05 pm] GET /api/admin/notifications [32m200[0m - 715ms
+[9:45:04 pm] GET /api/admin/notifications [32m200[0m - 661ms
+[9:45:05 pm] GET /api/admin/notifications [32m200[0m - 613ms
+[CRON] Executing review and unlock sweeps...
+[9:46:04 pm] GET /api/admin/notifications [32m200[0m - 648ms
+[9:46:05 pm] GET /api/admin/notifications [32m200[0m - 601ms
+[9:47:04 pm] GET /api/admin/notifications [32m200[0m - 526ms
+[9:47:05 pm] GET /api/admin/notifications [32m200[0m - 603ms
+[CRON] Executing review and unlock sweeps...
+[9:48:04 pm] GET /api/admin/notifications [32m200[0m - 704ms
+[9:48:05 pm] GET /api/admin/notifications [32m200[0m - 603ms
+[9:49:04 pm] GET /api/admin/notifications [32m200[0m - 700ms
+[9:49:05 pm] GET /api/admin/notifications [32m200[0m - 614ms
+[CRON] Executing review and unlock sweeps...
+[CRON FAILED]: Connection terminated unexpectedly
+[9:50:08 pm] GET /api/admin/notifications [32m200[0m - 4043ms
+[9:50:08 pm] GET /api/admin/notifications [32m200[0m - 891ms
+[9:51:04 pm] GET /api/admin/notifications [32m200[0m - 603ms
+[9:51:05 pm] GET /api/admin/notifications [32m200[0m - 685ms
+[CRON] Executing review and unlock sweeps...
+[9:52:05 pm] GET /api/admin/notifications [32m200[0m - 1075ms
+[9:52:05 pm] GET /api/admin/notifications [32m200[0m - 699ms
+[9:53:08 pm] GET /api/admin/notifications [32m200[0m - 4037ms
+[9:53:11 pm] GET /api/admin/notifications [32m200[0m - 3359ms
+[CRON] Executing review and unlock sweeps...
+[9:54:04 pm] GET /api/admin/notifications [32m200[0m - 685ms
+[9:54:05 pm] GET /api/admin/notifications [32m200[0m - 588ms
+[9:55:04 pm] GET /api/admin/notifications [32m200[0m - 894ms
+[9:55:06 pm] GET /api/admin/notifications [32m200[0m - 1624ms
+[CRON] Executing review and unlock sweeps...
+[9:56:04 pm] GET /api/admin/notifications [32m200[0m - 696ms
+[9:56:05 pm] GET /api/admin/notifications [32m200[0m - 716ms
+[9:57:04 pm] GET /api/admin/notifications [32m200[0m - 909ms
+[9:57:05 pm] GET /api/admin/notifications [32m200[0m - 614ms
+[CRON] Executing review and unlock sweeps...
+[9:58:05 pm] GET /api/admin/notifications [32m200[0m - 1035ms
+[9:58:06 pm] GET /api/admin/notifications [32m200[0m - 1013ms
+[9:59:04 pm] GET /api/admin/notifications [32m200[0m - 610ms
+[9:59:05 pm] GET /api/admin/notifications [32m200[0m - 716ms
+[CRON] Executing review and unlock sweeps...
+[10:00:04 pm] GET /api/admin/notifications [32m200[0m - 728ms
+[10:00:05 pm] GET /api/admin/notifications [32m200[0m - 613ms
+[10:01:04 pm] GET /api/admin/notifications [32m200[0m - 740ms
+[10:01:05 pm] GET /api/admin/notifications [32m200[0m - 646ms
+[CRON] Executing review and unlock sweeps...
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:02:14 pm] GET /api/admin/notifications [31m500[0m - 10009ms
+[10:02:18 pm] GET /api/admin/notifications [32m200[0m - 4160ms
+[10:03:09 pm] GET /api/admin/notifications [32m200[0m - 5770ms
+[10:03:15 pm] GET /api/admin/notifications [32m200[0m - 6024ms
+[CRON] Executing review and unlock sweeps...
+Auth Middleware Error: PrismaClientKnownRequestError: 
+Invalid `prisma.user.findUnique()` invocation in
+C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\src\middlewares\auth.middleware.ts:38:38
+
+  35   return;
+  36 }
+  37 
+→ 38 const dbUser = await prisma.user.findUnique(
+Can't reach database server at ep-polished-dew-ap4w5dqf-pooler.c-7.us-east-1.aws.neon.tech
+    at Gr.handleRequestError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:237:13)
+    at Gr.handleAndLogRequestError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:183:12)
+    at Gr.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:152:12)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async a (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:938:24)
+    at async requireAuth (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\src\middlewares\auth.middleware.ts:38:20) {
+  code: 'P1001',
+  meta: {
+    modelName: 'User',
+    driverAdapterError: DriverAdapterError: DatabaseNotReachable
+        at PrismaPgAdapter.onError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:678:11)
+        at PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:673:12)
+        at processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+        at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+        at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+        at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+      cause: [Object]
+    }
+  },
+  clientVersion: '7.7.0'
+}
+[10:04:04 pm] GET /api/admin/notifications [31m500[0m - 7ms
+Auth Middleware Error: PrismaClientKnownRequestError: 
+Invalid `prisma.user.findUnique()` invocation in
+C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\src\middlewares\auth.middleware.ts:38:38
+
+  35   return;
+  36 }
+  37 
+→ 38 const dbUser = await prisma.user.findUnique(
+Can't reach database server at ep-polished-dew-ap4w5dqf-pooler.c-7.us-east-1.aws.neon.tech
+    at Gr.handleRequestError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:237:13)
+    at Gr.handleAndLogRequestError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:183:12)
+    at Gr.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\RequestHandler.ts:152:12)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async a (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:938:24)
+    at async requireAuth (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\src\middlewares\auth.middleware.ts:38:20) {
+  code: 'P1001',
+  meta: {
+    modelName: 'User',
+    driverAdapterError: DriverAdapterError: DatabaseNotReachable
+        at PrismaPgAdapter.onError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:678:11)
+        at PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:673:12)
+        at processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+        at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+        at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+        at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+        at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+      cause: [Object]
+    }
+  },
+  clientVersion: '7.7.0'
+}
+[10:04:04 pm] GET /api/admin/notifications [31m500[0m - 7ms
+[CRON FAILED]: Connection terminated unexpectedly
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:05:14 pm] GET /api/admin/notifications [31m500[0m - 10010ms
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:05:24 pm] GET /api/admin/notifications [31m500[0m - 10011ms
+[CRON] Executing review and unlock sweeps...
+[CRON FAILED]: Connection terminated due to connection timeout
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:06:14 pm] GET /api/admin/notifications [31m500[0m - 10010ms
+[10:06:22 pm] GET /api/admin/notifications [32m200[0m - 8709ms
+[10:07:04 pm] GET /api/admin/notifications [32m200[0m - 623ms
+[10:07:05 pm] GET /api/admin/notifications [32m200[0m - 704ms
+[CRON] Executing review and unlock sweeps...
+[10:08:04 pm] GET /api/admin/notifications [32m200[0m - 740ms
+[10:08:05 pm] GET /api/admin/notifications [32m200[0m - 808ms
+[10:09:04 pm] GET /api/admin/notifications [32m200[0m - 701ms
+[10:09:05 pm] GET /api/admin/notifications [32m200[0m - 606ms
+[10:09:51 pm] GET / [33m404[0m - 1ms
+[10:09:53 pm] GET / [33m404[0m - 0ms
+[10:09:54 pm] GET / [33m404[0m - 1ms
+[10:09:55 pm] GET / [33m404[0m - 0ms
+[10:09:55 pm] GET /api/public/announcements/active [32m200[0m - 2103ms
+[10:09:56 pm] GET / [33m404[0m - 0ms
+[10:09:58 pm] GET / [33m404[0m - 0ms
+[CRON] Executing review and unlock sweeps...
+[10:10:00 pm] GET / [33m404[0m - 0ms
+[10:10:01 pm] GET / [33m404[0m - 0ms
+[10:10:03 pm] GET / [33m404[0m - 0ms
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:10:03 pm] GET /api/admin/tasks [31m500[0m - 10028ms
+[10:10:03 pm] GET /api/public/announcements/active [33m400[0m - 10037ms
+Auth Middleware Error: Error: Connection terminated due to connection timeout
+    at C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg-pool\index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PrismaPgAdapter.performIO (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:213:41)
+    at async e.interpretNode (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+    at async e.run (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+    at async execute (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12)
+    at async jt.request (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\@prisma\client\src\runtime\core\engines\client\ClientEngine.ts:503:22) {
+  clientVersion: '7.7.0',
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\client.js:180:73)
+      at Object.onceWrapper (node:events:630:28)
+      at Connection.emit (node:events:509:28)
+      at Connection.emit (node:domain:489:12)
+      at Socket.<anonymous> (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\pg\lib\connection.js:61:12)
+      at Socket.emit (node:events:521:24)
+      at Socket.emit (node:domain:489:12)
+      at TCP.<anonymous> (node:net:350:12)
+}
+[10:10:03 pm] GET /api/admin/notifications [31m500[0m - 10041ms
+[10:10:04 pm] GET / [33m404[0m - 0ms
+[10:10:06 pm] GET / [33m404[0m - 0ms
+[10:10:07 pm] GET / [33m404[0m - 0ms
+[10:10:09 pm] GET / [33m404[0m - 1ms
+[10:10:09 pm] GET /api/public/announcements/active [32m200[0m - 326ms
+[10:10:13 pm] GET /api/public/announcements/active [32m200[0m - 4182ms
+[10:10:15 pm] POST /api/auth/signin [32m200[0m - 1414ms
+[10:10:16 pm] GET /api/public/announcements/active [32m200[0m - 544ms
+[10:10:16 pm] GET /api/public/announcements/active [32m200[0m - 552ms
+[10:10:16 pm] GET /api/admin/notifications [32m200[0m - 883ms
+[10:10:18 pm] GET /api/admin/notifications [32m200[0m - 1674ms
+[10:10:19 pm] GET /api/admin/notifications [32m200[0m - 1020ms
+[10:10:20 pm] GET /api/admin/notifications [32m200[0m - 647ms
+[10:10:20 pm] GET /api/admin/metrics [32m200[0m - 4457ms
+[10:10:22 pm] GET /api/admin/metrics [32m200[0m - 1560ms
+[10:10:23 pm] GET /api/admin/users [32m200[0m - 779ms
+[10:10:24 pm] GET /api/admin/users [32m200[0m - 775ms
+[10:11:16 pm] GET /api/admin/notifications [32m200[0m - 826ms
+[10:11:17 pm] GET /api/admin/notifications [32m200[0m - 921ms
+[CRON] Executing review and unlock sweeps...
+[10:12:16 pm] GET /api/admin/notifications [32m200[0m - 842ms
+[10:12:17 pm] GET /api/admin/notifications [32m200[0m - 713ms
+[10:13:16 pm] GET /api/admin/notifications [32m200[0m - 837ms
+[10:13:17 pm] GET /api/admin/notifications [32m200[0m - 685ms
+[CRON] Executing review and unlock sweeps...
+[10:14:16 pm] GET /api/admin/notifications [32m200[0m - 750ms
+[10:14:17 pm] GET /api/admin/notifications [32m200[0m - 614ms
+[10:15:17 pm] GET /api/admin/notifications [32m200[0m - 1280ms
+[10:15:17 pm] GET /api/admin/notifications [32m200[0m - 560ms
+[CRON] Executing review and unlock sweeps...
+[10:16:17 pm] GET /api/admin/notifications [32m200[0m - 1056ms
+[10:16:17 pm] GET /api/admin/notifications [32m200[0m - 729ms
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+◇ injected env (12) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:859
+    return new TSError(diagnosticText, diagnosticCodes, diagnostics);
+           ^
+TSError: ⨯ Unable to compile TypeScript:
+src/modules/user/user.service.ts(73,11): error TS2322: Type '"MINIGAME_XP_REWARD"' is not assignable to type 'TransactionType'.
+
+    at createTSError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:859:12)
+    at reportTSError (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:863:19)
+    at getOutput (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:1077:36)
+    at Object.compile (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:1433:41)
+    at Module.m._compile (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:1617:30)
+    at node:internal/modules/cjs/loader:1961:10
+    at Object.require.extensions.<computed> [as .ts] (C:\Coding\Project\Sats\Sats_Earn_Backend_MVP\node_modules\ts-node\src\index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module._load (node:internal/modules/cjs/loader:1355:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19) {
+  diagnosticCodes: [ 2322 ]
+}
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m

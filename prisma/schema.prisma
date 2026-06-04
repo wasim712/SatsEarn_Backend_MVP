@@ -88,6 +88,7 @@ enum TransactionType {
   PENALTY
   STREAK_BONUS
   DAILY_QUIZ_REWARD
+  MINIGAME_XP_REWARD
 }
 
 enum AnnouncementType {
