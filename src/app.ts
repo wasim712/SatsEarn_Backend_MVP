@@ -19,7 +19,9 @@ app.use(helmet());
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:3000',
+  "https://satsearn.app"
 ];
+
 
 app.use(
   cors({
