@@ -399,3 +399,9 @@ src/modules/user/user.service.ts(73,11): error TS2322: Type '"MINIGAME_XP_REWARD
   diagnosticCodes: [ 2322 ]
 }
 [31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+◇ injected env (12) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+🚀 Registering SIGINT handler...
+Server is running on http://localhost:8080
+Background worker initialized. Jobs scheduled for [*/2 * * * *]
