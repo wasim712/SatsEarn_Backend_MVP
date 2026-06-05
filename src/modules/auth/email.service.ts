@@ -4,7 +4,7 @@ import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Define a central sender address to keep things consistent
-const SENDER_EMAIL = process.env.EMAIL_FROM || 'Sats Earn <onboarding@resend.dev>'; 
+const SENDER_EMAIL = process.env.EMAIL_FROM || 'SatsEarn <onboarding@resend.dev>'; 
 
 export class EmailService {
     

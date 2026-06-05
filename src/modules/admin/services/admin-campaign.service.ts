@@ -249,7 +249,7 @@ export class AdminCampaignService {
         tierRewardMatrixOverride: data.tierRewardMatrixOverride || null,
         xpRewardOverride: data.xpRewardOverride ?? null,
         requirements: {
-          requiredPlatform: data.requiredPlatform || 'WEBSITE',
+          requiredPlatform: data.requiredPlatform || 'NONE',
           standalone: true,
         },
       },
@@ -327,7 +327,7 @@ export class AdminCampaignService {
         requirements: {
           ...(data.requirements || {}),
           standalone: true,
-          requiredPlatform: requiredPlatform || 'WEBSITE',
+          requiredPlatform: requiredPlatform || 'NONE',
         },
       },
       include: { campaign: true },

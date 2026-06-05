@@ -539,20 +539,24 @@ model QuizQuestion {
 
 // Tracks who took the quiz so they can't double-dip
 model QuizAttempt {
-  id          String   @id @default(uuid())
+  id               String    @id @default(uuid())
   
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
   
-  dailyQuizId String
-  dailyQuiz   DailyQuiz @relation(fields: [dailyQuizId], references: [id])
+  dailyQuizId      String
+  dailyQuiz        DailyQuiz @relation(fields: [dailyQuizId], references: [id])
 
-  answers     Json?
+  answers          Json?
   
-  score       Int
-  passed      Boolean  // True if they got 100%
+  score            Int
+  passed           Boolean   // True if they got 100%
+  rewardSats       Int       @default(0)
+  streakBonusSats  Int       @default(0)
+  unlockAt         DateTime?
+  rewardUnlockedAt DateTime?
 
-  createdAt   DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   // Critical: Prevents a user from submitting the same daily quiz twice
   @@unique([userId, dailyQuizId]) 

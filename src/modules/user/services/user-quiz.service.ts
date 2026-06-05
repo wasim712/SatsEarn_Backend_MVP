@@ -7,6 +7,7 @@ import {
 } from '../../../utils/reward.util';
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
+import { DEFAULT_SECURITY_LOCK_DAYS, getSecurityUnlockAt } from '../../../utils/submission-flow.util';
 
 type PersistedQuizAnswer = {
   questionId: string;
@@ -26,13 +27,61 @@ type QuizQuestionEntity = {
 };
 
 function getQuizAttemptMultiplier(attemptCount: number) {
-  if (attemptCount <= 1) return 0.7;
-  if (attemptCount === 2) return 0.5;
-  if (attemptCount === 3) return 0.25;
-  if (attemptCount === 4) return 0.2;
+  if (attemptCount <= 1) return 1;
+  if (attemptCount === 2) return 0.7;
+  if (attemptCount === 3) return 0.5;
+  if (attemptCount === 4) return 0.25;
+  if (attemptCount === 5) return 0.2;
   return 0.1;
 }
 
+function allocateProportionalIntegers(total: number, weights: number[]) {
+  if (total <= 0 || weights.length === 0) {
+    return weights.map(() => 0);
+  }
+
+  const safeWeights = weights.map((weight) => (Number.isFinite(weight) && weight > 0 ? weight : 0));
+  const weightSum = safeWeights.reduce((sum, weight) => sum + weight, 0);
+
+  if (weightSum <= 0) {
+    return safeWeights.map(() => 0);
+  }
+
+  const rawAllocations = safeWeights.map((weight) => (total * weight) / weightSum);
+  const floored = rawAllocations.map((value) => Math.floor(value));
+  let remainder = total - floored.reduce((sum, value) => sum + value, 0);
+
+  const ranked = rawAllocations
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index);
+
+  for (const item of ranked) {
+    if (remainder <= 0) break;
+    if (safeWeights[item.index] <= 0) continue;
+    floored[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return floored;
+}
+function allocateQuizRewardByAttempts(total: number, effectiveMultipliers: number[]) {
+  // Each question owns an equal share of the full reward pool,
+  // regardless of how it was answered.
+  const baseShares = allocateProportionalIntegers(
+    total,
+    effectiveMultipliers.map(() => 1),
+  );
+
+  // A question pays its full share only on a first-try correct answer.
+  // Every extra wrong attempt shrinks that question's payout via its multiplier
+  // (1 → 0.7 → 0.5 → 0.25 → 0.2 → 0.1). Unsolved/incorrect questions pay 0.
+  return baseShares.map((share, index) => {
+  const multiplier = effectiveMultipliers[index];
+  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 0;
+  if (safeMultiplier <= 0) return 0;
+  return Math.max(1, Math.round(share * safeMultiplier));
+});
+}
 function normalizeQuizDateKey(dateKey?: string) {
   const normalized = (dateKey || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
@@ -103,7 +152,6 @@ function buildQuizPayload(
       explanation: question.explanation,
       options: question.options,
       order: question.order,
-      correctAnswer: question.correctAnswer,
     })),
   };
 }
@@ -113,8 +161,7 @@ function buildInProgressResult(
   persistedAnswers: PersistedQuizAnswer[],
 ) {
   const totalQuestions = quiz.questions.length;
-  const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
-  const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
+  const sortedQuestions = quiz.questions.slice().sort((a, b) => a.order - b.order);
   const answerMap = new Map(persistedAnswers.map((item) => [item.questionId, item]));
 
   let rewardEarned = 0;
@@ -122,39 +169,52 @@ function buildInProgressResult(
   let totalAttempts = 0;
   let solvedCount = 0;
 
-  const review = quiz.questions
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((question) => {
-      const savedAnswer = answerMap.get(question.id);
-      const selectedAnswer = savedAnswer?.answer || '';
-      const wrongAnswers = savedAnswer?.wrongAnswers || [];
-      const attemptCount = Math.max(savedAnswer?.attemptCount || wrongAnswers.length || 0, wrongAnswers.length);
-      const isCorrect = selectedAnswer === question.correctAnswer;
-      const multiplier = getQuizAttemptMultiplier(Math.max(1, attemptCount || 1));
-      const questionReward = isCorrect ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
-      const questionXp = isCorrect ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+  const questionStates = sortedQuestions.map((question) => {
+    const savedAnswer = answerMap.get(question.id);
+    const selectedAnswer = savedAnswer?.answer || '';
+    const wrongAnswers = savedAnswer?.wrongAnswers || [];
+    const attemptCount = Math.max(savedAnswer?.attemptCount || wrongAnswers.length || 0, wrongAnswers.length);
+    const isCorrect = selectedAnswer === question.correctAnswer;
+    const multiplier = getQuizAttemptMultiplier(Math.max(1, attemptCount || 1));
 
-      totalAttempts += attemptCount;
-      if (isCorrect) {
-        solvedCount += 1;
+    totalAttempts += attemptCount;
+    if (isCorrect) {
+      solvedCount += 1;
+    }
+
+    return { question, selectedAnswer, wrongAnswers, attemptCount: Math.max(1, attemptCount || 1), isCorrect, multiplier };
+  });
+
+const rewardAllocations = allocateQuizRewardByAttempts(
+    quiz.rewardSats,
+    questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
+  );
+  const xpAllocations = allocateQuizRewardByAttempts(
+    quiz.xpReward,
+    questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
+  );
+
+  const review = questionStates.map((state, index) => {
+      const questionReward = rewardAllocations[index] || 0;
+      const questionXp = xpAllocations[index] || 0;
+
+      if (state.isCorrect) {
         rewardEarned += questionReward;
         xpEarned += questionXp;
       }
 
       return {
-        questionId: question.id,
-        questionText: question.questionText,
-        explanation: question.explanation,
-        selectedAnswer,
-        correctAnswer: question.correctAnswer,
-        isCorrect,
-        attemptCount: Math.max(1, attemptCount || 1),
+        questionId: state.question.id,
+        questionText: state.question.questionText,
+        explanation: state.question.explanation,
+        selectedAnswer: state.selectedAnswer,
+        isCorrect: state.isCorrect,
+        attemptCount: state.attemptCount,
         rewardAwarded: questionReward,
         xpAwarded: questionXp,
-        options: question.options,
-        order: question.order,
-        wrongAnswers,
+        options: state.question.options,
+        order: state.question.order,
+        wrongAnswers: state.wrongAnswers,
       };
     });
 
@@ -450,11 +510,7 @@ export class UserQuizService {
     const totalQuestions = quiz.questions.length;
     const answerKey = new Map(quiz.questions.map((question) => [question.id, question.correctAnswer]));
     const submittedAnswerMap = new Map(userAnswers.map((submission) => [submission.questionId, submission]));
-    const baseSatsPerQuestion = totalQuestions > 0 ? quiz.rewardSats / totalQuestions : 0;
-    const baseXpPerQuestion = totalQuestions > 0 ? quiz.xpReward / totalQuestions : 0;
     let totalAttempts = 0;
-    let computedRewardSats = 0;
-    let computedRewardXp = 0;
 
     for (const submission of userAnswers) {
       const correctAnswer = answerKey.get(submission.questionId);
@@ -464,11 +520,32 @@ export class UserQuizService {
 
       const attemptCount = Math.max(1, submission.attemptCount || 1);
       totalAttempts += attemptCount;
-
-      const multiplier = getQuizAttemptMultiplier(attemptCount);
-      computedRewardSats += Math.floor(baseSatsPerQuestion * multiplier);
-      computedRewardXp += Math.floor(baseXpPerQuestion * multiplier);
     }
+
+    const sortedQuestions = quiz.questions.slice().sort((a, b) => a.order - b.order);
+    const questionStates = sortedQuestions.map((question) => {
+      const submission = submittedAnswerMap.get(question.id);
+      const attemptCount = Math.max(1, submission?.attemptCount || 1);
+
+      return {
+        question,
+        attemptCount,
+        isCorrect: true,
+        multiplier: getQuizAttemptMultiplier(attemptCount),
+      };
+    });
+
+const rewardAllocations = allocateQuizRewardByAttempts(
+      quiz.rewardSats,
+      questionStates.map((state) => state.multiplier),
+    );
+    const xpAllocations = allocateQuizRewardByAttempts(
+      quiz.xpReward,
+      questionStates.map((state) => state.multiplier),
+    );
+
+    const computedRewardSats = rewardAllocations.reduce((sum, value) => sum + value, 0);
+    const computedRewardXp = xpAllocations.reduce((sum, value) => sum + value, 0);
 
     const score = totalQuestions;
 
@@ -503,6 +580,10 @@ export class UserQuizService {
       where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
     });
 
+    const settings = await prisma.platformSettings.findFirst();
+    const securityLockDays = settings?.securityLockDays || DEFAULT_SECURITY_LOCK_DAYS;
+    const quizUnlockAt = getSecurityUnlockAt(securityLockDays);
+
     return await prisma.$transaction(async (tx) => {
       const attempt = existingAttempt
         ? await tx.quizAttempt.update({
@@ -523,29 +604,43 @@ export class UserQuizService {
             },
           });
 
-      const review = quiz.questions
-        .sort((a, b) => a.order - b.order)
-        .map((question) => {
-          const submittedAnswer = submittedAnswerMap.get(question.id);
-          const selectedAnswer = submittedAnswer?.answer || '';
-          const correctAnswer = question.correctAnswer;
-          const attemptCount = Math.max(1, submittedAnswer?.attemptCount || 1);
-          const multiplier = getQuizAttemptMultiplier(attemptCount);
-          const rewardAwarded = selectedAnswer === correctAnswer ? Math.floor(baseSatsPerQuestion * multiplier) : 0;
-          const xpAwarded = selectedAnswer === correctAnswer ? Math.floor(baseXpPerQuestion * multiplier) : 0;
+      const sortedQuestions = quiz.questions.slice().sort((a, b) => a.order - b.order);
+      const questionStates = sortedQuestions.map((question) => {
+        const submittedAnswer = submittedAnswerMap.get(question.id);
+        const selectedAnswer = submittedAnswer?.answer || '';
+        const correctAnswer = question.correctAnswer;
+        const attemptCount = Math.max(1, submittedAnswer?.attemptCount || 1);
+        const isCorrect = selectedAnswer === correctAnswer;
+        const multiplier = getQuizAttemptMultiplier(attemptCount);
+
+        return { question, selectedAnswer, correctAnswer, attemptCount, isCorrect, multiplier };
+      });
+
+    const rewardAllocations = allocateQuizRewardByAttempts(
+        quiz.rewardSats,
+        questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
+      );
+      const xpAllocations = allocateQuizRewardByAttempts(
+        quiz.xpReward,
+        questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
+      );
+
+      const review = questionStates.map((state, index) => {
+          const rewardAwarded = rewardAllocations[index] || 0;
+          const xpAwarded = xpAllocations[index] || 0;
 
           return {
-            questionId: question.id,
-            questionText: question.questionText,
-            explanation: question.explanation,
-            selectedAnswer,
-            correctAnswer,
-            isCorrect: selectedAnswer === correctAnswer,
-            attemptCount,
+            questionId: state.question.id,
+            questionText: state.question.questionText,
+            explanation: state.question.explanation,
+            selectedAnswer: state.selectedAnswer,
+            correctAnswer: state.correctAnswer,
+            isCorrect: state.isCorrect,
+            attemptCount: state.attemptCount,
             rewardAwarded,
             xpAwarded,
-            options: question.options,
-            order: question.order,
+            options: state.question.options,
+            order: state.question.order,
             wrongAnswers: [],
           };
         });
@@ -556,6 +651,9 @@ export class UserQuizService {
           data: {
             currentStreak: streakEvaluation.nextStreak,
             lastActivityAt: new Date(),
+            rewardSats: 0,
+            streakBonusSats: 0,
+            unlockAt: null,
           },
         });
 
@@ -580,7 +678,7 @@ export class UserQuizService {
       await tx.user.update({
         where: { id: userId },
         data: {
-          balanceAvailable: { increment: finalRewardSats + streakBonusSats },
+          balanceLocked: { increment: finalRewardSats + streakBonusSats },
           totalXp: { increment: finalRewardXp },
           currentStreak: streakEvaluation.nextStreak,
           lastActivityAt: new Date(),
@@ -590,13 +688,33 @@ export class UserQuizService {
         },
       });
 
+      await tx.quizAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          rewardSats: finalRewardSats,
+          streakBonusSats,
+          unlockAt: finalRewardSats + streakBonusSats > 0 ? quizUnlockAt : null,
+          rewardUnlockedAt: null,
+        },
+      });
+
+      if (finalRewardSats > 0 || streakBonusSats > 0) {
+        await NotificationService.notifyUser(
+          userId,
+          'Daily Quiz Reward Locked',
+          `Your daily quiz reward of ${finalRewardSats + streakBonusSats} sats is now locked for ${securityLockDays} days before moving to available balance.`,
+          'SYSTEM_ALERT',
+          attempt.id,
+        );
+      }
+
       if (finalRewardSats > 0) {
         await tx.ledger.create({
           data: {
             userId,
             amountSats: finalRewardSats,
             type: 'DAILY_QUIZ_REWARD',
-            description: `Daily Quiz: ${quiz.title} (${score}/${totalQuestions} correct)`,
+            description: `Daily Quiz: ${quiz.title} (${score}/${totalQuestions} correct) - locked for ${securityLockDays} days`,
             referenceId: attempt.id,
           },
         });
@@ -608,7 +726,7 @@ export class UserQuizService {
             userId,
             amountSats: streakBonusSats,
             type: 'STREAK_BONUS',
-            description: `Streak milestone reached: ${nextMilestone} days`,
+            description: `Streak milestone reached: ${nextMilestone} days - locked for ${securityLockDays} days`,
             referenceId: attempt.id,
           },
         });
@@ -616,14 +734,14 @@ export class UserQuizService {
         await NotificationService.notifyUser(
           userId,
           'Streak Milestone Reward Unlocked',
-          `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats.`,
+          `You reached your ${nextMilestone}-day streak and earned ${streakBonusSats} sats. The reward is locked for ${securityLockDays} days.`,
           'SYSTEM_ALERT',
           attempt.id,
         );
       }
 
       return {
-        message: `Quiz completed! You earned ${finalRewardSats} sats after ${totalAttempts} total tries across ${totalQuestions} questions.`,
+        message: `Quiz completed! You earned ${finalRewardSats} sats after ${totalAttempts} total tries across ${totalQuestions} questions. Your sats are now locked for ${securityLockDays} days before moving to available balance.`,
         passed,
         score,
         totalQuestions,
