@@ -64,7 +64,24 @@ function allocateProportionalIntegers(total: number, weights: number[]) {
 
   return floored;
 }
+function allocateQuizRewardByAttempts(total: number, effectiveMultipliers: number[]) {
+  // Each question owns an equal share of the full reward pool,
+  // regardless of how it was answered.
+  const baseShares = allocateProportionalIntegers(
+    total,
+    effectiveMultipliers.map(() => 1),
+  );
 
+  // A question pays its full share only on a first-try correct answer.
+  // Every extra wrong attempt shrinks that question's payout via its multiplier
+  // (1 → 0.7 → 0.5 → 0.25 → 0.2 → 0.1). Unsolved/incorrect questions pay 0.
+  return baseShares.map((share, index) => {
+  const multiplier = effectiveMultipliers[index];
+  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 0;
+  if (safeMultiplier <= 0) return 0;
+  return Math.max(1, Math.round(share * safeMultiplier));
+});
+}
 function normalizeQuizDateKey(dateKey?: string) {
   const normalized = (dateKey || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
@@ -168,11 +185,11 @@ function buildInProgressResult(
     return { question, selectedAnswer, wrongAnswers, attemptCount: Math.max(1, attemptCount || 1), isCorrect, multiplier };
   });
 
-  const rewardAllocations = allocateProportionalIntegers(
+const rewardAllocations = allocateQuizRewardByAttempts(
     quiz.rewardSats,
     questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
   );
-  const xpAllocations = allocateProportionalIntegers(
+  const xpAllocations = allocateQuizRewardByAttempts(
     quiz.xpReward,
     questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
   );
@@ -518,11 +535,11 @@ export class UserQuizService {
       };
     });
 
-    const rewardAllocations = allocateProportionalIntegers(
+const rewardAllocations = allocateQuizRewardByAttempts(
       quiz.rewardSats,
       questionStates.map((state) => state.multiplier),
     );
-    const xpAllocations = allocateProportionalIntegers(
+    const xpAllocations = allocateQuizRewardByAttempts(
       quiz.xpReward,
       questionStates.map((state) => state.multiplier),
     );
@@ -599,11 +616,11 @@ export class UserQuizService {
         return { question, selectedAnswer, correctAnswer, attemptCount, isCorrect, multiplier };
       });
 
-      const rewardAllocations = allocateProportionalIntegers(
+    const rewardAllocations = allocateQuizRewardByAttempts(
         quiz.rewardSats,
         questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
       );
-      const xpAllocations = allocateProportionalIntegers(
+      const xpAllocations = allocateQuizRewardByAttempts(
         quiz.xpReward,
         questionStates.map((state) => (state.isCorrect ? state.multiplier : 0)),
       );
