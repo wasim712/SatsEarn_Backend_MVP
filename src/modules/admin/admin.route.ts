@@ -13,7 +13,8 @@ import {
   createCampaignSchema,
   createDailyQuizSchema,
   createFaqItemSchema,
-  createTaskSchema,
+  createCampaignTaskSchema,
+  createStandaloneTaskSchema,
   faqItemIdParamSchema,
   quizIdParamSchema,
   updateCheatUserSchema,
@@ -26,7 +27,8 @@ import {
   updatePremiumRequestSchema,
   adjustUserSubmissionRewardSchema,
   updateUserPremiumSchema,
-  updateTaskSchema,
+  updateCampaignTaskSchema,
+  updateStandaloneTaskSchema,
 } from './admin.schema';
 
 const router = Router();
@@ -47,15 +49,15 @@ router.patch('/campaigns/:id', validate(updateCampaignSchema), AdminController.u
 router.delete('/campaigns/:id', AdminController.deleteCampaign);
 router.get('/campaigns/:id', AdminController.getCampaignById);
 
-router.post('/tasks/standalone', validate(createTaskSchema), AdminController.createStandaloneTask);
+router.post('/tasks/standalone', validate(createStandaloneTaskSchema), AdminController.createStandaloneTask);
 router.get('/tasks', AdminController.getAllStandaloneTasks);
 router.get('/tasks/:taskId', AdminController.getStandaloneTaskById);
-router.patch('/tasks/:taskId', validate(updateTaskSchema), AdminController.updateStandaloneTask);
+router.patch('/tasks/:taskId', validate(updateStandaloneTaskSchema), AdminController.updateStandaloneTask);
 router.delete('/tasks/:taskId', AdminController.deleteStandaloneTask);
-router.post('/campaigns/:campaignId/tasks', validate(createTaskSchema), AdminController.addTaskToCampaign);
+router.post('/campaigns/:campaignId/tasks', validate(createCampaignTaskSchema), AdminController.addTaskToCampaign);
 router.get('/campaigns/:campaignId/tasks', AdminController.getAllTasksForCampaign);
 router.get('/campaigns/:campaignId/tasks/:taskId', AdminController.getTaskById);
-router.patch('/campaigns/:campaignId/tasks/:taskId', validate(updateTaskSchema), AdminController.updateTask);
+router.patch('/campaigns/:campaignId/tasks/:taskId', validate(updateCampaignTaskSchema), AdminController.updateTask);
 router.delete('/campaigns/:campaignId/tasks/:taskId', AdminController.deleteTask);
 
 router.get('/announcements', AdminController.getAllAnnouncements);
