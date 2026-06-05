@@ -18,46 +18,6 @@ import {
 import { NotificationService } from '../../notifications/notification.service';
 import { AiVerificationService } from '../../verification/verification.service';
 
-const REFERRAL_ACTIVE_DAYS_REQUIRED = 10;
-const REFERRAL_ACTIVITY_WINDOW_DAYS = 30;
-
-async function getUserUniqueActiveDaysLast30Days(db: typeof prisma, userId: string) {
-  const windowStart = new Date(Date.now() - REFERRAL_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-  const [taskSubmissions, standaloneSubmissions, quizAttempts] = await Promise.all([
-    db.submission.findMany({
-      where: {
-        userId,
-        status: { not: SubmissionStatus.REJECTED },
-        submittedAt: { gte: windowStart },
-      },
-      select: { submittedAt: true },
-    }),
-    db.standaloneSubmission.findMany({
-      where: {
-        userId,
-        status: { not: SubmissionStatus.REJECTED },
-        submittedAt: { gte: windowStart },
-      },
-      select: { submittedAt: true },
-    }),
-    db.quizAttempt.findMany({
-      where: {
-        userId,
-        createdAt: { gte: windowStart },
-      },
-      select: { createdAt: true },
-    }),
-  ]);
-
-  return new Set([
-    ...taskSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
-    ...standaloneSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
-    ...quizAttempts.map((item) => item.createdAt.toISOString().split('T')[0]),
-  ]).size;
-}
-
-
 export class UserSubmissionService {
   private static isWithinNewUserWindow(createdAt: Date, maxAgeDays: number | null | undefined) {
     if (!maxAgeDays || maxAgeDays <= 0) return false;
@@ -264,10 +224,6 @@ export class UserSubmissionService {
             });
 
             if (referrer) {
-              const referralActiveDays = await getUserUniqueActiveDaysLast30Days(tx as typeof prisma, userId);
-              const referralEligible = referralActiveDays >= REFERRAL_ACTIVE_DAYS_REQUIRED;
-
-              if (referralEligible) {
                 const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
                 const referrerActiveTier = referrerHasPremium
                   ? referrer.premiumTier
@@ -327,8 +283,15 @@ export class UserSubmissionService {
                       referenceId: submission.id,
                     },
                   });
+
+                  await NotificationService.notifyUser(
+                    referrer.id,
+                    'Referral Reward Added',
+                    `${user.fullName || 'Your referral'} completed a task and you earned ${(referralBonusMsats / 1000).toFixed(3)} sats in pending balance.`,
+                    'SYSTEM_ALERT',
+                    submission.id,
+                  );
                 }
-              }
             }
           }
 

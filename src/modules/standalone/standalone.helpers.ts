@@ -10,45 +10,7 @@ import {
 } from '../../utils/reward.util';
 import { NotificationService } from '../notifications/notification.service';
 
-const REFERRAL_ACTIVE_DAYS_REQUIRED = 10;
-const REFERRAL_ACTIVITY_WINDOW_DAYS = 30;
 const FREE_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'] as const;
-
-async function getUserUniqueActiveDaysLast30Days(userId: string) {
-  const windowStart = new Date(Date.now() - REFERRAL_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-  const [taskSubmissions, standaloneSubmissions, quizAttempts] = await Promise.all([
-    prisma.submission.findMany({
-      where: {
-        userId,
-        status: { not: SubmissionStatus.REJECTED },
-        submittedAt: { gte: windowStart },
-      },
-      select: { submittedAt: true },
-    }),
-    prisma.standaloneSubmission.findMany({
-      where: {
-        userId,
-        status: { not: SubmissionStatus.REJECTED },
-        submittedAt: { gte: windowStart },
-      },
-      select: { submittedAt: true },
-    }),
-    prisma.quizAttempt.findMany({
-      where: {
-        userId,
-        createdAt: { gte: windowStart },
-      },
-      select: { createdAt: true },
-    }),
-  ]);
-
-  return new Set([
-    ...taskSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
-    ...standaloneSubmissions.map((item) => item.submittedAt.toISOString().split('T')[0]),
-    ...quizAttempts.map((item) => item.createdAt.toISOString().split('T')[0]),
-  ]).size;
-}
 
 export const ALL_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'CROWN', 'ELITE', 'FOUNDER'] as const;
 const ALLOWED_STANDALONE_PLATFORMS: readonly CampaignDevice[] = ['NONE', 'DESKTOP', 'ANDROID', 'IOS'];
@@ -191,10 +153,6 @@ export async function applyStandaloneRewardEffects(params: {
         },
       });
       if (referrer) {
-        const referralActiveDays = await getUserUniqueActiveDaysLast30Days(userId);
-        const referralEligible = referralActiveDays >= REFERRAL_ACTIVE_DAYS_REQUIRED;
-
-        if (referralEligible) {
           const referrerHasPremium = TierUtils.isPremiumActive(referrer as User);
           const referrerActiveTier = referrerHasPremium ? referrer.premiumTier : TierUtils.getFreeTier(referrer.totalXp);
           const tierReferralMatrix = (settings.tierReferralMatrix as Record<string, number> | null) || null;
@@ -247,7 +205,6 @@ export async function applyStandaloneRewardEffects(params: {
               submissionId,
             );
           }
-        }
       }
     }
   }
