@@ -173,6 +173,43 @@ export class UserSubmissionService {
             });
 
         if (determinedStatus !== SubmissionStatus.REJECTED) {
+          const campaignTaskIds = (
+            await tx.task.findMany({
+              where: { campaignId: liveCampaign.id },
+              select: { id: true },
+            })
+          ).map((campaignTask) => campaignTask.id);
+
+          const completedTaskIdsForUser = new Set(
+            (
+              await tx.submission.findMany({
+                where: {
+                  userId,
+                  status: { not: SubmissionStatus.REJECTED },
+                  taskId: { in: campaignTaskIds },
+                },
+                select: { taskId: true },
+              })
+            ).map((item) => item.taskId),
+          );
+
+          const completesCampaign =
+            campaignTaskIds.length > 0 && completedTaskIdsForUser.size === campaignTaskIds.length;
+
+          if (completesCampaign) {
+            const reservedSlot = await tx.campaign.updateMany({
+              where: {
+                id: liveCampaign.id,
+                totalCompletions: { lt: liveCampaign.maxCompletions },
+              },
+              data: { totalCompletions: { increment: 1 } },
+            });
+
+            if (reservedSlot.count === 0) {
+              throw new Error('This campaign filled up while your proof was being verified.');
+            }
+          }
+
           await tx.user.update({
             where: { id: userId },
             data: {
@@ -295,32 +332,6 @@ export class UserSubmissionService {
             }
           }
 
-          const campaignTaskIds = (
-            await tx.task.findMany({
-              where: { campaignId: liveCampaign.id },
-              select: { id: true },
-            })
-          ).map((campaignTask) => campaignTask.id);
-
-          const completedTaskIdsForUser = new Set(
-            (
-              await tx.submission.findMany({
-                where: {
-                  userId,
-                  status: { not: SubmissionStatus.REJECTED },
-                  taskId: { in: campaignTaskIds },
-                },
-                select: { taskId: true },
-              })
-            ).map((item) => item.taskId),
-          );
-
-          if (campaignTaskIds.length > 0 && completedTaskIdsForUser.size === campaignTaskIds.length) {
-            await tx.campaign.update({
-              where: { id: liveCampaign.id },
-              data: { totalCompletions: { increment: 1 } },
-            });
-          }
         }
 
         return submission;
