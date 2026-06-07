@@ -290,6 +290,8 @@ export class AdminUserService {
     return {
       ...user,
       phone: CryptoUtil.decrypt(user.phone),
+      registrationIp: CryptoUtil.decrypt(user.registrationIp),
+      lastIpAddress: CryptoUtil.decrypt(user.lastIpAddress),
       twitterHandle: CryptoUtil.decrypt(user.twitterHandle),
       instagramHandle: CryptoUtil.decrypt(user.instagramHandle),
       telegramHandle: CryptoUtil.decrypt(user.telegramHandle),
