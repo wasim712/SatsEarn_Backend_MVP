@@ -51,6 +51,7 @@ export class StandaloneUserService {
       })
       .map((task) => ({
         ...task,
+        baseRewardSats: Number(((task.tierRewardMatrix || {}) as Record<string, number>).BASIC || 0),
         taskRewardSats: getStandaloneDisplayReward(task, user),
         userSubmission: task.submissions[0] || null,
         hasStarted: task.submissions.length > 0,

@@ -46,18 +46,28 @@ export function getNextStreakMilestone(lastClaimedMilestone: number) {
 }
 
 export function evaluateDailyActivityStreak(lastActivityAt: Date | null | undefined, currentStreak: number, now = new Date()) {
+  if (!lastActivityAt) {
+    return { nextStreak: 1, didCountToday: false, reset: false };
+  }
+
+  if (currentStreak <= 0) {
+    return { nextStreak: 1, didCountToday: false, reset: false };
+  }
+
+  const elapsedMs = now.getTime() - lastActivityAt.getTime();
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+
+  if (elapsedMs < 0) {
+    return { nextStreak: currentStreak, didCountToday: true, reset: false };
+  }
+
+  if (elapsedMs >= twentyFourHoursMs) {
+    return { nextStreak: 1, didCountToday: false, reset: true };
+  }
+
   const today = normalizeUtcDay(now);
-  const lastActiveDay = lastActivityAt ? normalizeUtcDay(lastActivityAt) : null;
-
-  if (!lastActiveDay) {
-    return { nextStreak: 1, didCountToday: false, reset: false };
-  }
-
-   if (currentStreak <= 0) {
-    return { nextStreak: 1, didCountToday: false, reset: false };
-  }
-
-  const diffDays = Math.floor((today.getTime() - lastActiveDay.getTime()) / (24 * 60 * 60 * 1000));
+  const lastActiveDay = normalizeUtcDay(lastActivityAt);
+  const diffDays = Math.floor((today.getTime() - lastActiveDay.getTime()) / twentyFourHoursMs);
 
   if (diffDays <= 0) {
     return { nextStreak: currentStreak, didCountToday: true, reset: false };

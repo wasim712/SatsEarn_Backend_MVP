@@ -1,7 +1,7 @@
 import { prisma } from '../../db/prisma.client';
 import { NotificationService } from '../notifications/notification.service';
 import { TierUtils } from '../../utils/tier.utils';
-import { getNextStreakMilestone, getStreakMilestoneReward, getStreakMilestones } from '../../utils/reward.util';
+import { evaluateDailyActivityStreak, getNextStreakMilestone, getStreakMilestoneReward, getStreakMilestones } from '../../utils/reward.util';
 import { UserAccountService } from './services/user-account.service';
 import { UserCampaignService } from './services/user-campaign.service';
 import { UserContentService } from './services/user-content.service';
@@ -235,6 +235,16 @@ export class UserService {
     });
 
     if (!user) throw new Error('User not found');
+
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+
+    if (streakEvaluation.reset && user.currentStreak !== 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { currentStreak: 0 },
+      });
+      user.currentStreak = 0;
+    }
 
     const activePremiumTier = TierUtils.getCurrentPremiumTier(user as any);
     const isPremium = Boolean(activePremiumTier);

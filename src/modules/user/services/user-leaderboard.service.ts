@@ -1,4 +1,5 @@
 import { prisma } from '../../../db/prisma.client';
+import { evaluateDailyActivityStreak } from '../../../utils/reward.util';
 
 type LeaderboardEntry = {
   rank: number;
@@ -106,16 +107,25 @@ export class UserLeaderboardService {
         email: true,
         avatarUrl: true,
         currentStreak: true,
+        lastActivityAt: true,
       },
     });
 
-    return users.map((user, index) => ({
+    return users
+      .map((user) => ({
+        ...user,
+        currentStreak: evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak).reset
+          ? 0
+          : user.currentStreak,
+      }))
+      .sort((a, b) => b.currentStreak - a.currentStreak)
+      .map((user, index) => ({
       rank: index + 1,
       userId: user.id,
       fullName: getDisplayName(user),
       username: getHandle(user),
       avatarUrl: user.avatarUrl,
       value: user.currentStreak,
-    }));
+      }));
   }
 }

@@ -22,6 +22,12 @@ export class UserCampaignService {
     return overrideReward > 0 ? overrideReward : campaignReward;
   }
 
+  private static getBasicTierRewardForTask(
+    task: { tierRewardMatrixOverride?: unknown; campaign: { tierRewardMatrix?: unknown } },
+  ) {
+    return this.getTierRewardForTask(task, 'BASIC');
+  }
+
   static async getAvailableCampaigns(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -91,7 +97,11 @@ export class UserCampaignService {
         const taskLevelRewards = campaign.tasks.map((task) => {
           return this.getTierRewardForTask({ ...task, campaign }, activeTier as string);
         });
+        const basicTierTaskRewards = campaign.tasks.map((task) => {
+          return this.getBasicTierRewardForTask({ ...task, campaign });
+        });
         const totalTaskReward = taskLevelRewards.reduce((sum, reward) => sum + Number(reward || 0), 0);
+        const baseRewardSats = basicTierTaskRewards.reduce((sum, reward) => sum + Number(reward || 0), 0);
         const totalTaskXp = campaign.tasks.reduce(
           (sum, task) => sum + Number(task.xpRewardOverride ?? campaign.xpReward ?? 0),
           0,
@@ -108,6 +118,7 @@ export class UserCampaignService {
         return {
           ...campaign,
           isStandalone: campaign.tasks.length > 0 && campaign.tasks.every((task) => Boolean((task as any).requirements?.standalone)),
+          baseRewardSats,
           displayRewardSats: applyDoubleReward(totalTaskReward, doubleRewardsActive),
           xpReward: applyDoubleReward(totalTaskXp, doubleRewardsActive),
           doubleRewardsActive,
