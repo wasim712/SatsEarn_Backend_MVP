@@ -1,5 +1,5 @@
 import { SubmissionStatus } from '@prisma/client';
-import { prisma } from '../../db/prisma.client'; // Adjust path if needed
+import { prisma } from '../../db/prisma.client';
 import { NotificationService } from '../notifications/notification.service';
 import {
   DEFAULT_SECURITY_LOCK_DAYS,
@@ -76,29 +76,13 @@ export class CronService {
       securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
     };
 
+    // Fetch regular submissions with their userId so we can move balances
     const readySubmissions = await prisma.submission.findMany({
       where: {
         status: SubmissionStatus.PENDING_24H,
         unlockAt: { lte: new Date() },
       },
-      select: { id: true },
-    });
-
-    if (readySubmissions.length === 0) {
-      return { message: 'No submissions are ready for 15-day locking.' };
-    }
-
-    const lockAt = getSecurityUnlockAt(settings.securityLockDays);
-
-    const result = await prisma.submission.updateMany({
-      where: {
-        id: { in: readySubmissions.map((submission) => submission.id) },
-        status: SubmissionStatus.PENDING_24H,
-      },
-      data: {
-        status: SubmissionStatus.LOCKED_15D,
-        unlockAt: lockAt,
-      },
+      select: { id: true, userId: true },
     });
 
     const readyStandaloneSubmissions = await prisma.standaloneSubmission.findMany({
@@ -106,50 +90,118 @@ export class CronService {
         status: SubmissionStatus.PENDING_24H,
         unlockAt: { lte: new Date() },
       },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
 
-    let standaloneCount = 0;
-    if (readyStandaloneSubmissions.length > 0) {
-      const standaloneResult = await prisma.standaloneSubmission.updateMany({
-        where: {
-          id: { in: readyStandaloneSubmissions.map((submission) => submission.id) },
-          status: SubmissionStatus.PENDING_24H,
-        },
-        data: {
-          status: SubmissionStatus.LOCKED_15D,
-          unlockAt: lockAt,
-        },
+    if (readySubmissions.length === 0 && readyStandaloneSubmissions.length === 0) {
+      return { message: 'No submissions are ready for 15-day locking.' };
+    }
+
+    const lockAt = getSecurityUnlockAt(settings.securityLockDays);
+
+    let regularCount = 0;
+    // Process each regular submission: update status AND move balance
+    for (const sub of readySubmissions) {
+      await prisma.$transaction(async (tx) => {
+        // Find the reward amount from the ledger
+        const ledgerEntry = await tx.ledger.findFirst({
+          where: {
+            referenceId: sub.id,
+            userId: sub.userId,
+            type: 'TASK_REWARD',
+          },
+        });
+
+        // Update submission status to LOCKED_15D
+        await tx.submission.update({
+          where: { id: sub.id },
+          data: {
+            status: SubmissionStatus.LOCKED_15D,
+            unlockAt: lockAt,
+          },
+        });
+
+        // Move sats from Pending → Locked
+        if (ledgerEntry) {
+          await tx.user.update({
+            where: { id: sub.userId },
+            data: {
+              balancePending: { decrement: ledgerEntry.amountSats },
+              balanceLocked: { increment: ledgerEntry.amountSats },
+            },
+          });
+        }
       });
-      standaloneCount = standaloneResult.count;
+      regularCount++;
+    }
+
+    let standaloneCount = 0;
+    // Process each standalone submission: update status AND move balance
+    for (const sub of readyStandaloneSubmissions) {
+      await prisma.$transaction(async (tx) => {
+        const ledgerEntry = await tx.ledger.findFirst({
+          where: {
+            referenceId: sub.id,
+            userId: sub.userId,
+            type: 'TASK_REWARD',
+          },
+        });
+
+        await tx.standaloneSubmission.update({
+          where: { id: sub.id },
+          data: {
+            status: SubmissionStatus.LOCKED_15D,
+            unlockAt: lockAt,
+          },
+        });
+
+        if (ledgerEntry) {
+          await tx.user.update({
+            where: { id: sub.userId },
+            data: {
+              balancePending: { decrement: ledgerEntry.amountSats },
+              balanceLocked: { increment: ledgerEntry.amountSats },
+            },
+          });
+        }
+      });
+      standaloneCount++;
     }
 
     return {
       success: true,
-      message: `Moved ${result.count + standaloneCount} submissions into 15-day lock.`,
+      message: `Moved ${regularCount + standaloneCount} submissions into 15-day lock.`,
     };
   }
 
   /**
    * Finds all submissions where the 15-day timer has expired
-   * and safely moves the user's funds from Pending to Available.
+   * and safely moves the user's funds from Locked to Available.
    */
   static async process15DayUnlocks() {
     // 1. Find all submissions whose timer is in the past!
     const readySubmissions = await prisma.submission.findMany({
       where: {
         status: SubmissionStatus.LOCKED_15D,
-        unlockAt: { lte: new Date() } // Less than or equal to RIGHT NOW
+        unlockAt: { lte: new Date() }
       },
       select: { id: true, userId: true }
     });
 
-    if (readySubmissions.length === 0) {
-      return { message: "No funds are currently scheduled to unlock." };
-    }
-
     let unlockedCount = 0;
     let totalSatsUnlocked = 0;
+
+    const readyStandaloneSubmissions = await prisma.standaloneSubmission.findMany({
+      where: {
+        status: SubmissionStatus.LOCKED_15D,
+        unlockAt: { lte: new Date() }
+      },
+      select: { id: true, userId: true }
+    });
+
+    if (readySubmissions.length === 0 && readyStandaloneSubmissions.length === 0) {
+      return { message: "No funds are currently scheduled to unlock." };
+    }
 
     // 2. Process them one by one safely
     for (const sub of readySubmissions) {
@@ -178,11 +230,11 @@ export class CronService {
           data: { status: SubmissionStatus.WITHDRAWABLE }
         });
 
-        // C. MOVE THE MONEY! 💰 (Pending -> Available)
+        // C. MOVE THE MONEY! 💰 (Locked -> Available)
         await tx.user.update({
           where: { id: sub.userId },
           data: {
-            balancePending: { decrement: satsToUnlock },
+            balanceLocked: { decrement: satsToUnlock },
             balanceAvailable: { increment: satsToUnlock }
           }
         });
@@ -207,14 +259,7 @@ export class CronService {
       unlockedCount++;
     }
 
-    const readyStandaloneSubmissions = await prisma.standaloneSubmission.findMany({
-      where: {
-        status: SubmissionStatus.LOCKED_15D,
-        unlockAt: { lte: new Date() }
-      },
-      select: { id: true, userId: true }
-    });
-
+    // 3. Process standalone submissions
     for (const sub of readyStandaloneSubmissions) {
       let satsUnlockedForSubmission = 0;
 
@@ -240,7 +285,7 @@ export class CronService {
         await tx.user.update({
           where: { id: sub.userId },
           data: {
-            balancePending: { decrement: satsToUnlock },
+            balanceLocked: { decrement: satsToUnlock },
             balanceAvailable: { increment: satsToUnlock }
           }
         });
