@@ -66,6 +66,7 @@ export async function applyStandaloneRewardEffects(params: {
   submissionId: string;
   submissionStatus: SubmissionStatus;
   rejectionReason?: string | null;
+  tierRewardMatrix?: unknown;
 }) {
   const {
     userId,
@@ -77,6 +78,7 @@ export async function applyStandaloneRewardEffects(params: {
     submissionId,
     submissionStatus,
     rejectionReason,
+    tierRewardMatrix,
   } = params;
 
   const settings = (await prisma.platformSettings.findFirst()) || {
@@ -109,7 +111,9 @@ export async function applyStandaloneRewardEffects(params: {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        balancePending: { increment: workerReward },
+        ...(submissionStatus === SubmissionStatus.PENDING_24H
+          ? { balancePending: { increment: workerReward } }
+          : {}),
         totalXp: { increment: xpReward },
         currentStreak: nextStreak,
         lastActivityAt: new Date(),
@@ -122,15 +126,17 @@ export async function applyStandaloneRewardEffects(params: {
       },
     });
 
-    await prisma.ledger.create({
-      data: {
-        userId,
-        amountSats: workerReward,
-        type: 'TASK_REWARD',
-        description: `Standalone task reward for ${standaloneTaskTitle}`,
-        referenceId: submissionId,
-      },
-    });
+    if (submissionStatus === SubmissionStatus.PENDING_24H) {
+      await prisma.ledger.create({
+        data: {
+          userId,
+          amountSats: workerReward,
+          type: 'TASK_REWARD',
+          description: `Standalone task reward for ${standaloneTaskTitle}`,
+          referenceId: submissionId,
+        },
+      });
+    }
 
     if (streakBonusSats > 0 && nextMilestone) {
       await prisma.ledger.create({
@@ -144,7 +150,7 @@ export async function applyStandaloneRewardEffects(params: {
       });
     }
 
-    if (referredById) {
+    if (submissionStatus === SubmissionStatus.PENDING_24H && referredById) {
       const referrer = await prisma.user.findUnique({
         where: { id: referredById },
         select: {
@@ -161,8 +167,12 @@ export async function applyStandaloneRewardEffects(params: {
           const tierReferralMatrix = (settings.tierReferralMatrix as Record<string, number> | null) || null;
           const configuredCommission = referrerActiveTier ? tierReferralMatrix?.[String(referrerActiveTier)] : undefined;
           const commissionPercent = Number(configuredCommission ?? settings.referralBonusPercent ?? 0);
-          const intendedReferralBonus = getReferralBonusAmount(workerReward, commissionPercent);
-          const intendedReferralBonusMsats = getReferralBonusMsats(workerReward, commissionPercent);
+          // Referral commission is based on BASIC tier reward, not the referred user's actual tier reward
+          const basicRewardMatrix = normalizeTierRewardMatrix(tierRewardMatrix);
+          const basicReward = Number(basicRewardMatrix['BASIC'] || 0);
+          const referralBaseReward = basicReward > 0 ? basicReward : workerReward;
+          const intendedReferralBonus = getReferralBonusAmount(referralBaseReward, commissionPercent);
+          const intendedReferralBonusMsats = getReferralBonusMsats(referralBaseReward, commissionPercent);
 
           let actualReferralBonus = intendedReferralBonus;
           let actualReferralBonusMsats = intendedReferralBonusMsats;

@@ -4,7 +4,10 @@ import { NotificationService } from '../../notifications/notification.service';
 import {
   DEFAULT_SECURITY_LOCK_DAYS,
   getSecurityUnlockAt,
+  getReferralBonusMsats,
+  splitMsats,
 } from '../../../utils/submission-flow.util';
+import { applyDoubleReward, isDoubleRewardActive } from '../../../utils/reward.util';
 
 export class AdminSubmissionService {
   static async getPendingSubmissions() {
@@ -54,7 +57,7 @@ export class AdminSubmissionService {
   ) {
     const existingSubmission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { task: true },
+      include: { task: { include: { campaign: true } } },
     });
 
     if (!existingSubmission) throw new Error('Submission not found');
@@ -64,6 +67,8 @@ export class AdminSubmissionService {
 
     const settings = await prisma.platformSettings.findFirst() || {
       securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
+      referralBonusPercent: 5,
+      tierReferralMatrix: null,
     };
 
     const updateResult = await prisma.$transaction(async (tx) => {
@@ -77,24 +82,134 @@ export class AdminSubmissionService {
         },
       });
 
-      // Move sats from Pending → Locked when approving
+      // On approval: calculate reward, create ledger, credit balanceLocked, process referrals
       if (result.count > 0 && status === 'LOCKED_15D') {
-        const ledgerEntry = await tx.ledger.findFirst({
-          where: {
-            referenceId: submissionId,
-            userId: existingSubmission.userId,
-            type: 'TASK_REWARD',
+        const submittingUser = await tx.user.findUnique({
+          where: { id: existingSubmission.userId },
+          select: {
+            id: true,
+            totalXp: true,
+            premiumTier: true,
+            premiumExpiresAt: true,
+            referredById: true,
+            fullName: true,
           },
         });
 
-        if (ledgerEntry) {
-          await tx.user.update({
-            where: { id: existingSubmission.userId },
-            data: {
-              balancePending: { decrement: ledgerEntry.amountSats },
-              balanceLocked: { increment: ledgerEntry.amountSats },
-            },
-          });
+        if (submittingUser) {
+          // Calculate reward based on user's tier
+          const activePremiumTier = TierUtils.getCurrentPremiumTier(submittingUser as any);
+          const activeTier = activePremiumTier || TierUtils.getFreeTier(submittingUser.totalXp);
+          const campaign = existingSubmission.task.campaign;
+          const campaignMatrix = (campaign.tierRewardMatrix || {}) as Record<string, number>;
+          const overrideMatrix = (existingSubmission.task.tierRewardMatrixOverride || {}) as Record<string, number>;
+          const tierKey = String(activeTier || '');
+          const configuredReward = Number(overrideMatrix[tierKey] || campaignMatrix[tierKey] || 0);
+          const isDoubleActive = isDoubleRewardActive(
+            campaign.doubleRewardsStartAt,
+            campaign.doubleRewardsEndAt,
+          );
+          const workerReward = applyDoubleReward(configuredReward, isDoubleActive);
+
+          if (workerReward > 0) {
+            // Create ledger entry (not created at submission time for MANUAL_REVIEW)
+            await tx.ledger.create({
+              data: {
+                userId: existingSubmission.userId,
+                amountSats: workerReward,
+                type: 'TASK_REWARD',
+                description: `Task: ${campaign.title} (Tier: ${activeTier}) - Admin Approved`,
+                referenceId: submissionId,
+              },
+            });
+
+            // Credit balanceLocked directly (skipping pending since admin approved)
+            await tx.user.update({
+              where: { id: existingSubmission.userId },
+              data: {
+                balanceLocked: { increment: workerReward },
+              },
+            });
+
+            // Process referral commission
+            if (submittingUser.referredById) {
+              const referrer = await tx.user.findUnique({
+                where: { id: submittingUser.referredById },
+                select: {
+                  id: true,
+                  totalXp: true,
+                  premiumTier: true,
+                  premiumExpiresAt: true,
+                  referralPendingMsats: true,
+                },
+              });
+
+              if (referrer) {
+                const referrerHasPremium = TierUtils.isPremiumActive(referrer as any);
+                const referrerActiveTier = referrerHasPremium
+                  ? referrer.premiumTier
+                  : TierUtils.getFreeTier(referrer.totalXp);
+                const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
+                const configuredCommission = referrerActiveTier
+                  ? tierReferralMatrix?.[String(referrerActiveTier)]
+                  : undefined;
+                const commissionPercent = Number(configuredCommission ?? settings.referralBonusPercent ?? 0);
+                // Referral commission is based on BASIC tier reward, not the referred user's actual tier reward
+                const basicReward = Number(overrideMatrix['BASIC'] || campaignMatrix['BASIC'] || 0);
+                const basicWorkerReward = applyDoubleReward(basicReward > 0 ? basicReward : configuredReward, isDoubleActive);
+                let effectiveMsats = getReferralBonusMsats(basicWorkerReward, commissionPercent);
+
+                // Apply cap for free-tier referrers
+                if (!referrerHasPremium) {
+                  const freeTier = TierUtils.getFreeTier(referrer.totalXp);
+                  const cap = TierUtils.getFreeTierReferralCap(freeTier);
+                  const referralLedgers = await tx.ledger.findMany({
+                    where: { userId: referrer.id, type: 'REFERRAL_BONUS' },
+                    select: { amountSats: true },
+                  });
+                  const totalEarned = referralLedgers.reduce((sum: number, e: any) => sum + e.amountSats, 0);
+                  const remainingMsats = Math.max(0, (cap.maxSats - totalEarned) * 1000);
+                  effectiveMsats = Math.min(effectiveMsats, remainingMsats);
+                }
+
+                if (effectiveMsats > 0) {
+                  const totalPendingMsats = (referrer.referralPendingMsats || 0) + effectiveMsats;
+                  const { wholeSats, remainingMsats } = splitMsats(totalPendingMsats);
+
+                  await tx.user.update({
+                    where: { id: referrer.id },
+                    data: {
+                      balancePending: { increment: wholeSats },
+                      referralPendingMsats: remainingMsats,
+                    },
+                  });
+
+                  await tx.ledger.create({
+                    data: {
+                      userId: referrer.id,
+                      amountSats: wholeSats,
+                      amountMsats: effectiveMsats,
+                      type: 'REFERRAL_BONUS',
+                      description: `Commission from ${submittingUser.fullName || 'referred user'} (admin approved)`,
+                      referenceId: submissionId,
+                    },
+                  });
+
+                  try {
+                    await NotificationService.notifyUser(
+                      referrer.id,
+                      'Referral Reward Added',
+                      `${submittingUser.fullName || 'Your referral'} had a submission approved and you earned ${(effectiveMsats / 1000).toFixed(3)} sats.`,
+                      'SYSTEM_ALERT',
+                      submissionId,
+                    );
+                  } catch (notifyError) {
+                    console.error('Referral bonus credited, but notification failed:', notifyError);
+                  }
+                }
+              }
+            }
+          }
         }
       }
 
