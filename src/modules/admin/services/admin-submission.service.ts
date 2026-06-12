@@ -1,6 +1,10 @@
 import { prisma } from '../../../db/prisma.client';
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
+import {
+  DEFAULT_SECURITY_LOCK_DAYS,
+  getSecurityUnlockAt,
+} from '../../../utils/submission-flow.util';
 
 export class AdminSubmissionService {
   static async getPendingSubmissions() {
@@ -58,13 +62,43 @@ export class AdminSubmissionService {
       throw new Error(`Submission already processed: ${existingSubmission.status}`);
     }
 
-    const updateResult = await prisma.submission.updateMany({
-      where: { id: submissionId, status: 'MANUAL_REVIEW' },
-      data: {
-        status,
-        reviewedById: adminId,
-        rejectionReason: status === 'REJECTED' ? rejectionReason : null,
-      },
+    const settings = await prisma.platformSettings.findFirst() || {
+      securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
+    };
+
+    const updateResult = await prisma.$transaction(async (tx) => {
+      const result = await tx.submission.updateMany({
+        where: { id: submissionId, status: 'MANUAL_REVIEW' },
+        data: {
+          status,
+          reviewedById: adminId,
+          rejectionReason: status === 'REJECTED' ? rejectionReason : null,
+          unlockAt: status === 'LOCKED_15D' ? getSecurityUnlockAt(settings.securityLockDays) : undefined,
+        },
+      });
+
+      // Move sats from Pending → Locked when approving
+      if (result.count > 0 && status === 'LOCKED_15D') {
+        const ledgerEntry = await tx.ledger.findFirst({
+          where: {
+            referenceId: submissionId,
+            userId: existingSubmission.userId,
+            type: 'TASK_REWARD',
+          },
+        });
+
+        if (ledgerEntry) {
+          await tx.user.update({
+            where: { id: existingSubmission.userId },
+            data: {
+              balancePending: { decrement: ledgerEntry.amountSats },
+              balanceLocked: { increment: ledgerEntry.amountSats },
+            },
+          });
+        }
+      }
+
+      return result;
     });
 
     if (updateResult.count === 0) {

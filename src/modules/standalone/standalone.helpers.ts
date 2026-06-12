@@ -1,4 +1,4 @@
-﻿import { CampaignDevice, SubmissionStatus, type User } from '@prisma/client';
+import { CampaignDevice, SubmissionStatus, type User } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { getReferralBonusAmount, getReferralBonusMsats, getReviewReleaseAt, splitMsats } from '../../utils/submission-flow.util';
@@ -109,12 +109,15 @@ export async function applyStandaloneRewardEffects(params: {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        balancePending: { increment: workerReward + streakBonusSats },
+        balancePending: { increment: workerReward },
         totalXp: { increment: xpReward },
         currentStreak: nextStreak,
         lastActivityAt: new Date(),
         ...(streakBonusSats > 0 && nextMilestone
-          ? { lastClaimedStreakMilestone: nextMilestone }
+          ? {
+              balanceAvailable: { increment: streakBonusSats },
+              lastClaimedStreakMilestone: nextMilestone,
+            }
           : {}),
       },
     });
@@ -246,4 +249,3 @@ export function getStandaloneUnlockAt(status: SubmissionStatus) {
 export function getStandaloneDisplayReward(task: { tierRewardMatrix: unknown }, user: Pick<User, 'totalXp' | 'premiumTier' | 'premiumExpiresAt'>) {
   return applyDoubleReward(getStandaloneRewardForUser(task.tierRewardMatrix, user), false);
 }
-
