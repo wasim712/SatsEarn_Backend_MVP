@@ -1,4 +1,4 @@
-﻿import { SubmissionStatus } from '@prisma/client';
+import { SubmissionStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.client';
 import { TierUtils } from '../../utils/tier.utils';
 import { AiVerificationService } from '../verification/verification.service';
@@ -195,6 +195,7 @@ export class StandaloneUserService {
       submissionId: submission.id,
       submissionStatus: determinedStatus,
       rejectionReason: submission.rejectionReason,
+      tierRewardMatrix: task.tierRewardMatrix,
     });
 
     return submission;

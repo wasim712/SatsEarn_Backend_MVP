@@ -213,7 +213,9 @@ export class UserSubmissionService {
           await tx.user.update({
             where: { id: userId },
             data: {
-              balancePending: { increment: workerReward },
+              ...(determinedStatus === SubmissionStatus.PENDING_24H
+                ? { balancePending: { increment: workerReward } }
+                : {}),
               totalXp: { increment: xpReward },
               currentStreak: streakEvaluation.nextStreak,
               lastActivityAt: new Date(),
@@ -226,15 +228,17 @@ export class UserSubmissionService {
             },
           });
 
-          await tx.ledger.create({
-            data: {
-              userId,
-              amountSats: workerReward,
-              type: 'TASK_REWARD',
-              description: `Task: ${liveCampaign.title} (Tier: ${activeTier})`,
-              referenceId: submission.id,
-            },
-          });
+          if (determinedStatus === SubmissionStatus.PENDING_24H) {
+            await tx.ledger.create({
+              data: {
+                userId,
+                amountSats: workerReward,
+                type: 'TASK_REWARD',
+                description: `Task: ${liveCampaign.title} (Tier: ${activeTier})`,
+                referenceId: submission.id,
+              },
+            });
+          }
 
           if (streakBonusSats > 0 && nextMilestone) {
             await tx.ledger.create({
@@ -248,7 +252,7 @@ export class UserSubmissionService {
             });
           }
 
-          if (user.referredById) {
+          if (determinedStatus === SubmissionStatus.PENDING_24H && user.referredById) {
             const referrer = await tx.user.findUnique({
               where: { id: user.referredById },
               select: {
@@ -272,7 +276,10 @@ export class UserSubmissionService {
                 const commissionPercent = Number(
                   configuredCommission ?? settings.referralBonusPercent ?? 0,
                 );
-                const intendedReferralBonusMsats = getReferralBonusMsats(workerReward, commissionPercent);
+                // Referral commission is based on BASIC tier reward, not the referred user's actual tier reward
+                const basicTierReward = Number(overrideRewardMatrix['BASIC'] || campaignRewardMatrix['BASIC'] || 0);
+                const basicWorkerReward = applyDoubleReward(basicTierReward > 0 ? basicTierReward : configuredReward, isCampaignDoubleRewardsActive);
+                const intendedReferralBonusMsats = getReferralBonusMsats(basicWorkerReward, commissionPercent);
                 let referralBonusMsats = intendedReferralBonusMsats;
 
                 if (!referrerHasPremium) {
@@ -342,8 +349,6 @@ export class UserSubmissionService {
 
     if (submission) {
       try {
-        const referredUserName = user.fullName || 'your referral';
-
         if (submission.status === SubmissionStatus.REJECTED) {
           await NotificationService.notifyUser(
             userId,
@@ -372,74 +377,6 @@ export class UserSubmissionService {
             'SYSTEM_ALERT',
             submission.id,
           );
-        }
-
-        if (submission.status !== SubmissionStatus.REJECTED && user.referredById) {
-          const referrer = await prisma.user.findUnique({ where: { id: user.referredById } });
-
-          if (referrer) {
-            const referrerActivePremiumTier = TierUtils.getCurrentPremiumTier(referrer as any);
-            const referrerHasPremium = Boolean(referrerActivePremiumTier);
-            const referrerActiveTier = referrerActivePremiumTier || TierUtils.getFreeTier(referrer.totalXp);
-            const tierReferralMatrix = (settings?.tierReferralMatrix as Record<string, number> | null) || null;
-            const configuredCommission = referrerActiveTier
-              ? tierReferralMatrix?.[String(referrerActiveTier)]
-              : undefined;
-            const commissionPercent = Number(configuredCommission ?? settings.referralBonusPercent ?? 0);
-            const intendedReferralBonus = getReferralBonusAmount(workerReward, commissionPercent);
-
-            let totalReferralSatsEarned = 0;
-            let cap = null as ReturnType<typeof TierUtils.getFreeTierReferralCap> | null;
-
-            if (!referrerHasPremium) {
-              const freeTier = TierUtils.getFreeTier(referrer.totalXp);
-              cap = TierUtils.getFreeTierReferralCap(freeTier);
-              const referralLedgers = await prisma.ledger.findMany({
-                where: {
-                  userId: referrer.id,
-                  type: 'REFERRAL_BONUS',
-                },
-                select: { amountSats: true },
-              });
-              totalReferralSatsEarned = referralLedgers.reduce((sum, entry) => sum + entry.amountSats, 0);
-            }
-
-            const actualReferralLedger = await prisma.ledger.findFirst({
-              where: {
-                userId: referrer.id,
-                type: 'REFERRAL_BONUS',
-                referenceId: submission.id,
-              },
-              select: { amountSats: true, amountMsats: true },
-            });
-
-              const actualReferralBonus = actualReferralLedger?.amountSats || 0;
-              const actualReferralBonusMsats = actualReferralLedger?.amountMsats || actualReferralBonus * 1000;
-
-              if (actualReferralBonusMsats > 0) {
-                const cappedMessage = !referrerHasPremium && actualReferralBonus < intendedReferralBonus
-                  ? ` Your free-tier cap reduced this reward from ${intendedReferralBonus} sats to ${actualReferralBonus} sats.`
-                  : '';
-
-                await NotificationService.notifyUser(
-                  referrer.id,
-                  'Referral Reward Added',
-                  `${referredUserName} completed a task and you earned ${(actualReferralBonusMsats / 1000).toFixed(3)} sats as referral reward in pending balance.${cappedMessage}`,
-                  'SYSTEM_ALERT',
-                  submission.id,
-                );
-            } else if (!referrerHasPremium && cap) {
-              const remainingSats = Math.max(cap.maxSats - totalReferralSatsEarned, 0);
-
-              await NotificationService.notifyUser(
-                referrer.id,
-                'Referral Reward Cap Reached',
-                `${referredUserName} completed a task, but no referral sats were added because your free-tier referral cap is exhausted. Remaining capacity: ${remainingSats} sats.`,
-                'SYSTEM_ALERT',
-                submission.id,
-              );
-            }
-          }
         }
 
         if (submission.status === SubmissionStatus.MANUAL_REVIEW) {
