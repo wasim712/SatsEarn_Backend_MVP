@@ -380,9 +380,17 @@ export class UserSubmissionService {
         }
 
         if (submission.status === SubmissionStatus.MANUAL_REVIEW) {
+          await NotificationService.notifyUser(
+            userId,
+            'Submission Under Review',
+            `Your submission for "${task.title || task.campaign.title}" is being manually reviewed. You will be notified once it is approved or rejected.`,
+            'SUBMISSION_APPROVED',
+            submission.id,
+          );
+
           await NotificationService.notifyAdmins(
             'Manual Review Required',
-            `${user.fullName} submitted a task that needs manual review.`,
+            `${user.fullName} submitted a task that needs manual review: "${task.title || task.campaign.title}".`,
             'NEW_SUBMISSION',
             submission.id,
           );
