@@ -183,56 +183,87 @@ export class UserService {
 
     const availableReferralRemainderMsats = Math.max(0, availableReferralMsats - wholeAvailableReferralSats * 1000);
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        submissions: {
-          orderBy: { submittedAt: 'desc' },
-          take: 5,
-          select: {
-            id: true,
-            status: true,
-            rejectionReason: true,
-            submittedAt: true,
-            unlockAt: true,
-            userId: true,
-            task: {
-              select: {
-                title: true,
-                campaign: {
-                  select: {
-                    title: true,
+    // Sum only positive (income) ledger entries to get true lifetime earned sats.
+    // This value never decreases even when sats are spent on subscriptions or withdrawn.
+    const lifetimeLedgerAggregate = await prisma.ledger.aggregate({
+      where: {
+        userId,
+        amountSats: { gt: 0 },
+      },
+      _sum: { amountSats: true },
+    });
+    const totalLifetimeSats = lifetimeLedgerAggregate._sum.amountSats ?? 0;
+
+    const [user, recentStandaloneSubmissions] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          submissions: {
+            orderBy: { submittedAt: 'desc' },
+            take: 5,
+            select: {
+              id: true,
+              status: true,
+              rejectionReason: true,
+              submittedAt: true,
+              unlockAt: true,
+              userId: true,
+              task: {
+                select: {
+                  title: true,
+                  tierRewardMatrixOverride: true,
+                  campaign: {
+                    select: {
+                      title: true,
+                      tierRewardMatrix: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          transactions: {
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: {
+              amountSats: true,
+              amountMsats: true,
+              type: true,
+              description: true,
+              createdAt: true,
+            },
+          },
+          _count: {
+            select: {
+              referrals: true,
+              submissions: {
+                where: {
+                  status: {
+                    in: ['LOCKED_15D', 'WITHDRAWABLE', 'MANUAL_REVIEW'],
                   },
                 },
               },
             },
           },
         },
-        transactions: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-          select: {
-            amountSats: true,
-            amountMsats: true,
-            type: true,
-            description: true,
-            createdAt: true,
+      }),
+      prisma.standaloneSubmission.findMany({
+        where: { userId },
+        orderBy: { submittedAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          rejectionReason: true,
+          submittedAt: true,
+          unlockAt: true,
+          userId: true,
+          standaloneTask: {
+            select: { title: true, tierRewardMatrix: true },
           },
         },
-        _count: {
-          select: {
-            referrals: true,
-            submissions: {
-              where: {
-                status: {
-                  in: ['LOCKED_15D', 'WITHDRAWABLE', 'MANUAL_REVIEW'],
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+      }),
+    ]);
 
     if (!user) throw new Error('User not found');
 
@@ -289,7 +320,7 @@ export class UserService {
         pending: user.balancePending,
         pendingMsats: user.referralPendingMsats || 0,
         locked: user.balanceLocked,
-        totalLifetime: user.balanceAvailable + user.balancePending + user.balanceLocked,
+        totalLifetime: totalLifetimeSats,
         btcPriceUsd: platformSettings?.btcPriceUsd || 90000,
       },
       gamification: {
@@ -326,31 +357,87 @@ export class UserService {
         xpToNextTier,
       },
       recentActivity: user.transactions,
-      recentSubmissions: await Promise.all(
-        user.submissions.map(async (submission) => {
-          const ledgerEntry = await prisma.ledger.findFirst({
-            where: {
-              referenceId: submission.id,
-              userId: submission.userId,
-              type: 'TASK_REWARD',
-            },
-            select: { amountSats: true },
-          });
+      recentSubmissions: await (async () => {
+        // Helper: resolve expected reward from tier matrix when no ledger entry exists yet
+        const resolveRewardSats = (ledgerAmountSats: number | undefined, tierMatrix: Record<string, number>) => {
+          if (ledgerAmountSats !== undefined && ledgerAmountSats > 0) return ledgerAmountSats;
+          return Number(tierMatrix[String(activeTier || 'BASIC')] || 0);
+        };
 
-          return {
-            id: submission.id,
-            taskTitle: submission.task.title,
-            campaignTitle: submission.task.campaign.title,
-            status: submission.status,
-            rejectionReason: submission.rejectionReason,
-            submittedAt: submission.submittedAt,
-            unlockAt: submission.unlockAt,
-            creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
-            rewardSats: ledgerEntry?.amountSats || 0,
-            remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
-          };
-        }),
-      ),
+        // Build campaign submission entries
+        const campaignEntries = await Promise.all(
+          user.submissions.map(async (submission) => {
+            const ledgerEntry = await prisma.ledger.findFirst({
+              where: {
+                referenceId: submission.id,
+                userId: submission.userId,
+                type: 'TASK_REWARD',
+              },
+              orderBy: { createdAt: 'desc' },
+              select: { amountSats: true },
+            });
+
+            const overrideMatrix = (submission.task.tierRewardMatrixOverride || {}) as Record<string, number>;
+            const campaignMatrix = (submission.task.campaign.tierRewardMatrix || {}) as Record<string, number>;
+            const tierKey = String(activeTier || 'BASIC');
+            const expectedReward = Number(overrideMatrix[tierKey] || campaignMatrix[tierKey] || 0);
+            const rewardSats = ledgerEntry?.amountSats || expectedReward;
+
+            return {
+              id: submission.id,
+              taskTitle: submission.task.title,
+              campaignTitle: submission.task.campaign.title,
+              isStandalone: false,
+              status: submission.status,
+              rejectionReason: submission.rejectionReason,
+              submittedAt: submission.submittedAt,
+              unlockAt: submission.unlockAt,
+              creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
+              rewardSats,
+              remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
+            };
+          }),
+        );
+
+        // Build standalone submission entries
+        const standaloneEntries = await Promise.all(
+          recentStandaloneSubmissions.map(async (submission) => {
+            const ledgerEntry = await prisma.ledger.findFirst({
+              where: {
+                referenceId: submission.id,
+                userId: submission.userId,
+                type: 'TASK_REWARD',
+              },
+              orderBy: { createdAt: 'desc' },
+              select: { amountSats: true },
+            });
+
+            const standaloneMatrix = (submission.standaloneTask.tierRewardMatrix || {}) as Record<string, number>;
+            const tierKey = String(activeTier || 'BASIC');
+            const expectedReward = Number(standaloneMatrix[tierKey] || 0);
+            const rewardSats = ledgerEntry?.amountSats || expectedReward;
+
+            return {
+              id: submission.id,
+              taskTitle: submission.standaloneTask.title,
+              campaignTitle: 'Standalone Task',
+              isStandalone: true,
+              status: submission.status,
+              rejectionReason: submission.rejectionReason,
+              submittedAt: submission.submittedAt,
+              unlockAt: submission.unlockAt,
+              creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
+              rewardSats,
+              remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
+            };
+          }),
+        );
+
+        // Merge, sort by newest first, take top 5
+        return [...campaignEntries, ...standaloneEntries]
+          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+          .slice(0, 5);
+      })(),
     };
   }
 
@@ -414,19 +501,39 @@ export class UserService {
   }
 
   static async getSubmissionHistory(userId: string) {
-    const submissions = await prisma.submission.findMany({
-      where: { userId },
-      include: {
-        task: {
-          include: {
-            campaign: true,
+    const [submissions, standaloneSubmissions, historyUser] = await Promise.all([
+      prisma.submission.findMany({
+        where: { userId },
+        include: {
+          task: {
+            include: {
+              campaign: true,
+            },
           },
         },
-      },
-      orderBy: { submittedAt: 'desc' },
-    });
+        orderBy: { submittedAt: 'desc' },
+      }),
+      prisma.standaloneSubmission.findMany({
+        where: { userId },
+        include: {
+          standaloneTask: {
+            select: { title: true, tierRewardMatrix: true },
+          },
+        },
+        orderBy: { submittedAt: 'desc' },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { totalXp: true, premiumTier: true, premiumExpiresAt: true },
+      }),
+    ]);
 
-    return await Promise.all(
+    const historyActiveTier = historyUser
+      ? (TierUtils.getCurrentPremiumTier(historyUser as any) || TierUtils.getFreeTier(historyUser.totalXp))
+      : 'BASIC';
+    const historyTierKey = String(historyActiveTier || 'BASIC');
+
+    const campaignEntries = await Promise.all(
       submissions.map(async (submission) => {
         const ledgerEntry = await prisma.ledger.findFirst({
           where: {
@@ -434,23 +541,67 @@ export class UserService {
             userId,
             type: 'TASK_REWARD',
           },
+          orderBy: { createdAt: 'desc' },
           select: { amountSats: true, amountMsats: true },
         });
+
+        const overrideMatrix = (submission.task.tierRewardMatrixOverride || {}) as Record<string, number>;
+        const campaignMatrix = (submission.task.campaign.tierRewardMatrix || {}) as Record<string, number>;
+        const expectedReward = Number(overrideMatrix[historyTierKey] || campaignMatrix[historyTierKey] || 0);
+        const ledgerSats = ledgerEntry ? ((ledgerEntry.amountMsats ?? ledgerEntry.amountSats * 1000) / 1000) : 0;
+        const rewardSats = ledgerSats > 0 ? ledgerSats : expectedReward;
 
         return {
           id: submission.id,
           taskTitle: submission.task.title,
           campaignTitle: submission.task.campaign.title,
+          isStandalone: false,
           status: submission.status,
           rejectionReason: submission.rejectionReason,
           submittedAt: submission.submittedAt,
           unlockAt: submission.unlockAt,
           creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
-          rewardSats: ledgerEntry ? ((ledgerEntry.amountMsats ?? ledgerEntry.amountSats * 1000) / 1000) : 0,
+          rewardSats,
           remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
         };
       }),
     );
+
+    const standaloneEntries = await Promise.all(
+      standaloneSubmissions.map(async (submission) => {
+        const ledgerEntry = await prisma.ledger.findFirst({
+          where: {
+            referenceId: submission.id,
+            userId,
+            type: 'TASK_REWARD',
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { amountSats: true, amountMsats: true },
+        });
+
+        const standaloneMatrix = (submission.standaloneTask.tierRewardMatrix || {}) as Record<string, number>;
+        const expectedReward = Number(standaloneMatrix[historyTierKey] || 0);
+        const ledgerSats = ledgerEntry ? ((ledgerEntry.amountMsats ?? ledgerEntry.amountSats * 1000) / 1000) : 0;
+        const rewardSats = ledgerSats > 0 ? ledgerSats : expectedReward;
+
+        return {
+          id: submission.id,
+          taskTitle: submission.standaloneTask.title,
+          campaignTitle: 'Standalone Task',
+          isStandalone: true,
+          status: submission.status,
+          rejectionReason: submission.rejectionReason,
+          submittedAt: submission.submittedAt,
+          unlockAt: submission.unlockAt,
+          creditedAt: submission.status === 'WITHDRAWABLE' ? submission.unlockAt : null,
+          rewardSats,
+          remainingMs: submission.unlockAt ? Math.max(new Date(submission.unlockAt).getTime() - Date.now(), 0) : 0,
+        };
+      }),
+    );
+
+    return [...campaignEntries, ...standaloneEntries]
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   }
 
   static async submitQuizTask(userId: string, taskId: string, answers: string[]) {

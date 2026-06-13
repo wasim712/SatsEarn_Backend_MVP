@@ -185,18 +185,22 @@ export class StandaloneUserService {
           },
         });
 
-    await applyStandaloneRewardEffects({
-      userId,
-      userFullName: user.fullName,
-      referredById: user.referredById,
-      workerReward,
-      xpReward,
-      standaloneTaskTitle: task.title,
-      submissionId: submission.id,
-      submissionStatus: determinedStatus,
-      rejectionReason: submission.rejectionReason,
-      tierRewardMatrix: task.tierRewardMatrix,
-    });
+    try {
+      await applyStandaloneRewardEffects({
+        userId,
+        userFullName: user.fullName,
+        referredById: user.referredById,
+        workerReward,
+        xpReward,
+        standaloneTaskTitle: task.title,
+        submissionId: submission.id,
+        submissionStatus: determinedStatus,
+        rejectionReason: submission.rejectionReason,
+        tierRewardMatrix: task.tierRewardMatrix,
+      });
+    } catch (rewardError) {
+      console.error('Standalone submission saved, but reward/notification step failed:', rewardError);
+    }
 
     return submission;
   }

@@ -243,9 +243,17 @@ export async function applyStandaloneRewardEffects(params: {
   }
 
   if (submissionStatus === SubmissionStatus.MANUAL_REVIEW) {
+    await NotificationService.notifyUser(
+      userId,
+      'Submission Under Review',
+      `Your submission for "${standaloneTaskTitle}" is being manually reviewed. You will be notified once it is approved or rejected.`,
+      'SUBMISSION_APPROVED',
+      submissionId,
+    );
+
     await NotificationService.notifyAdmins(
       'Manual Review Required',
-      `${userFullName || 'A user'} submitted a standalone task that needs manual review.`,
+      `${userFullName || 'A user'} submitted a standalone task that needs manual review: "${standaloneTaskTitle}".`,
       'NEW_SUBMISSION',
       submissionId,
     );
