@@ -3,6 +3,7 @@ import { CryptoUtil } from '../../../utils/crypto.util';
 import { FraudService } from '../../fraud/fraud.service';
 import { NotificationService } from '../../notifications/notification.service';
 import { TierUtils } from '../../../utils/tier.utils';
+import { computeUserBalances } from '../../../utils/balance.util';
 
 function decryptWithdrawal<T extends Record<string, any>>(withdrawal: T): T {
   return {
@@ -64,7 +65,12 @@ export class UserWithdrawalService {
           throw new Error('User not found.');
         }
 
-        if (user.balanceAvailable < amountSats) {
+        // Compute TRUE available balance from the ledger
+        const computedBalances = await computeUserBalances(userId);
+        // Use the minimum of stored and computed to prevent withdrawing phantom sats
+        const trueAvailable = Math.min(user.balanceAvailable, computedBalances.available);
+
+        if (trueAvailable < amountSats) {
           throw new Error('Insufficient available balance.');
         }
 

@@ -12,6 +12,7 @@
     "migrate:prod": "npx prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
     "check:referral": "ts-node scripts/check-referral-status.ts",
+    "fix:negative-balances": "ts-node scripts/fix-negative-balances.ts",
     "test:campaign-max": "ts-node scripts/test-campaign-max-completions-update.ts",
     "test:campaign-last-slot": "ts-node scripts/test-campaign-last-slot-race.ts"
   },
