@@ -3,8 +3,27 @@ import { prisma } from '../../../db/prisma.client';
 import { NotificationService } from '../../notifications/notification.service';
 import { CryptoUtil } from '../../../utils/crypto.util';
 import { TierUtils } from '../../../utils/tier.utils';
+import { computeUserBalances } from '../../../utils/balance.util';
 
 const CHEAT_USER_EMAIL = 'sakshamarya015@gmail.com';
+
+async function findCheatUserIdentity() {
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: CHEAT_USER_EMAIL,
+        mode: 'insensitive',
+      },
+    },
+    select: { id: true, email: true },
+  });
+
+  if (!user) {
+    throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+  }
+
+  return user;
+}
 
 export class AdminUserService {
   static async getPremiumRequests() {
@@ -68,8 +87,10 @@ export class AdminUserService {
   }
 
   static async getCheatUserState() {
+    const cheatUser = await findCheatUserIdentity();
+
     const user = await prisma.user.findUnique({
-      where: { email: CHEAT_USER_EMAIL },
+      where: { id: cheatUser.id },
       select: {
         id: true,
         email: true,
@@ -93,12 +114,14 @@ export class AdminUserService {
 
     const isPremium = TierUtils.isPremiumActive(user as any);
     const freeTier = TierUtils.getFreeTier(user.totalXp);
+    const computedBalances = await computeUserBalances(user.id);
 
     return {
       ...user,
       activeTier: isPremium ? user.premiumTier : freeTier,
       isPremium,
       underlyingFreeTier: freeTier,
+      computedBalances,
     };
   }
 
@@ -113,12 +136,7 @@ export class AdminUserService {
     premiumExpiresAt?: string | null;
     isActive?: boolean;
   }) {
-    const existing = await prisma.user.findUnique({
-      where: { email: CHEAT_USER_EMAIL },
-      select: { id: true },
-    });
-
-    if (!existing) throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+    const existing = await findCheatUserIdentity();
 
     await prisma.user.update({
       where: { id: existing.id },
@@ -255,6 +273,7 @@ export class AdminUserService {
 
     const isPremium = TierUtils.isPremiumActive(user as any);
     const freeTier = TierUtils.getFreeTier(user.totalXp);
+    const computedBalances = await computeUserBalances(userId);
 
     const submissionMap = new Map(user.submissions.map((submission) => [submission.id, submission]));
     const withdrawalMap = new Map(user.withdrawals.map((withdrawal) => [withdrawal.id, withdrawal]));
@@ -300,6 +319,7 @@ export class AdminUserService {
       isPremium,
       isRecentlyActive: Boolean(user.lastActivityAt && user.lastActivityAt >= twentyFourHoursAgo),
       underlyingFreeTier: freeTier,
+      computedBalances,
       transactions,
     };
   }

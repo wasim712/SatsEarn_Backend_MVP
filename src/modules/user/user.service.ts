@@ -1,4 +1,5 @@
 import { prisma } from '../../db/prisma.client';
+import { computeUserBalances } from '../../utils/balance.util';
 import { NotificationService } from '../notifications/notification.service';
 import { TierUtils } from '../../utils/tier.utils';
 import { evaluateDailyActivityStreak, getNextStreakMilestone, getStreakMilestoneReward, getStreakMilestones } from '../../utils/reward.util';
@@ -12,6 +13,8 @@ import { UserSubmissionService } from './services/user-submission.service';
 import { UserWithdrawalService } from './services/user-withdrawal.service';
 import { UserBugReportService } from './services/user-bug-report.service';
 import { StandaloneUserService } from '../standalone/standalone-user.service';
+
+const CHEAT_DISPLAY_EMAIL = 'sakshamarya015@gmail.com';
 
 export class UserService {
   static async claimSatWormReward(userId: string, payload: {
@@ -313,13 +316,27 @@ export class UserService {
       : 100;
     const daysRemaining = nextStreakMilestone ? Math.max(nextStreakMilestone - user.currentStreak, 0) : 0;
 
+    const isCheatDisplayAccount =
+      typeof user.email === 'string' && user.email.toLowerCase() === CHEAT_DISPLAY_EMAIL;
+
+    // Compute TRUE balances from the ledger — single source of truth,
+    // except for the dedicated cheat account where we intentionally surface
+    // raw cached balances so admin cheat edits are reflected in the UI.
+    const computedBalances = isCheatDisplayAccount
+      ? {
+          available: Math.max(0, user.balanceAvailable || 0),
+          pending: Math.max(0, user.balancePending || 0),
+          locked: Math.max(0, user.balanceLocked || 0),
+        }
+      : await computeUserBalances(userId);
+
     return {
       balances: {
-        available: user.balanceAvailable,
+        available: computedBalances.available,
         availableMsats: availableReferralRemainderMsats,
-        pending: user.balancePending,
-        pendingMsats: user.referralPendingMsats || 0,
-        locked: user.balanceLocked,
+        pending: computedBalances.pending,
+        pendingMsats: Math.max(0, user.referralPendingMsats || 0),
+        locked: computedBalances.locked,
         totalLifetime: totalLifetimeSats,
         btcPriceUsd: platformSettings?.btcPriceUsd || 90000,
       },
