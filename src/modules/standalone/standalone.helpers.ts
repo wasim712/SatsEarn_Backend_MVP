@@ -9,6 +9,7 @@ import {
   getStreakMilestoneReward,
 } from '../../utils/reward.util';
 import { NotificationService } from '../notifications/notification.service';
+import { recordReferralCredit, recordStandaloneSubmission } from '../../monitoring/prometheus';
 
 const FREE_TIERS = ['BASIC', 'COPPER', 'BRONZE', 'SILVER', 'GOLD'] as const;
 
@@ -107,6 +108,14 @@ export async function applyStandaloneRewardEffects(params: {
   const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
   const streakBonusSats = nextMilestone && nextStreak >= nextMilestone ? getStreakMilestoneReward(nextMilestone) : 0;
 
+  recordStandaloneSubmission(
+    submissionStatus === SubmissionStatus.PENDING_24H
+      ? 'accepted'
+      : submissionStatus === SubmissionStatus.MANUAL_REVIEW
+        ? 'manual_review'
+        : 'rejected',
+  );
+
   if (submissionStatus !== SubmissionStatus.REJECTED) {
     await prisma.user.update({
       where: { id: userId },
@@ -199,16 +208,18 @@ export async function applyStandaloneRewardEffects(params: {
                 referralPendingMsats: remainingMsats,
               },
             });
-            await prisma.ledger.create({
-              data: {
-                userId: referrer.id,
+        await prisma.ledger.create({
+          data: {
+            userId: referrer.id,
                 amountSats: wholeSats,
                 amountMsats: actualReferralBonusMsats,
                 type: 'REFERRAL_BONUS',
                 description: `Referral bonus from standalone task completion by ${userFullName || 'your referral'}`,
-                referenceId: submissionId,
-              },
-            });
+            referenceId: submissionId,
+          },
+        });
+
+        recordReferralCredit('standalone', 'created');
 
             await NotificationService.notifyUser(
               referrer.id,

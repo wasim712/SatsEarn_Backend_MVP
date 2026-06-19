@@ -8,6 +8,7 @@ import {
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
 import { DEFAULT_SECURITY_LOCK_DAYS, getSecurityUnlockAt } from '../../../utils/submission-flow.util';
+import { recordQuizSubmission } from '../../../monitoring/prometheus';
 
 type PersistedQuizAnswer = {
   questionId: string;
@@ -563,6 +564,8 @@ const rewardAllocations = allocateQuizRewardByAttempts(
 
     const passed = score === totalQuestions;
     const finalRewardSats = computedRewardSats;
+
+    recordQuizSubmission(passed ? 'accepted' : 'rejected');
     const finalRewardXp = computedRewardXp;
     const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);

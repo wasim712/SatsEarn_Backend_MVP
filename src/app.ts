@@ -1,6 +1,8 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { httpMetricsMiddleware } from './monitoring/http-metrics.middleware';
+import metricsRoutes from './monitoring/metrics.routes';
 import { decryptObfuscatedJson, encryptObfuscatedResponse } from './middlewares/obfuscation.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { routeLogger } from './middlewares/logger.middleware';
@@ -19,6 +21,7 @@ app.use(helmet());
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:3000',
+  'http://localhost:3001',
   "https://satsearn.app"
 ];
 
@@ -38,7 +41,9 @@ app.use(
   }),
 );
 
+app.use(httpMetricsMiddleware);
 app.use(express.json());
+app.use('/metrics', metricsRoutes);
 app.use(decryptObfuscatedJson);
 app.use(encryptObfuscatedResponse);
 app.use(routeLogger);

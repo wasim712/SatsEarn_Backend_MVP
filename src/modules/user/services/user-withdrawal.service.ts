@@ -4,6 +4,7 @@ import { FraudService } from '../../fraud/fraud.service';
 import { NotificationService } from '../../notifications/notification.service';
 import { TierUtils } from '../../../utils/tier.utils';
 import { computeUserBalances } from '../../../utils/balance.util';
+import { recordWithdrawalRequest } from '../../../monitoring/prometheus';
 
 function decryptWithdrawal<T extends Record<string, any>>(withdrawal: T): T {
   return {
@@ -102,6 +103,8 @@ export class UserWithdrawalService {
       },
       { isolationLevel: 'Serializable' },
     );
+
+    recordWithdrawalRequest('created');
 
     try {
       const fraudReport = await FraudService.analyzeUserRisk(userId);

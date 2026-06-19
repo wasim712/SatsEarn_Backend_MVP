@@ -17,6 +17,7 @@ import {
 } from '../../../utils/reward.util';
 import { NotificationService } from '../../notifications/notification.service';
 import { AiVerificationService } from '../../verification/verification.service';
+import { recordReferralCredit, recordTaskSubmission } from '../../../monitoring/prometheus';
 
 export class UserSubmissionService {
   private static isWithinNewUserWindow(createdAt: Date, maxAgeDays: number | null | undefined) {
@@ -100,6 +101,14 @@ export class UserSubmissionService {
     if (aiResult.score >= 90) determinedStatus = SubmissionStatus.PENDING_24H;
     else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
     else determinedStatus = SubmissionStatus.REJECTED;
+
+    recordTaskSubmission(
+      determinedStatus === SubmissionStatus.PENDING_24H
+        ? 'accepted'
+        : determinedStatus === SubmissionStatus.MANUAL_REVIEW
+          ? 'manual_review'
+          : 'rejected',
+    );
 
     const isCampaignDoubleRewardsActive = isDoubleRewardActive(
       task.campaign.doubleRewardsStartAt,
@@ -317,16 +326,18 @@ export class UserSubmissionService {
                     },
                   });
 
-                  await tx.ledger.create({
-                    data: {
-                      userId: referrer.id,
+            await tx.ledger.create({
+              data: {
+                userId: referrer.id,
                       amountSats: wholeSats,
                       amountMsats: referralBonusMsats,
                       type: 'REFERRAL_BONUS',
                       description: `Commission (${commissionPercent}%) from ${user.fullName || 'referred user'}`,
-                      referenceId: submission.id,
-                    },
-                  });
+                referenceId: submission.id,
+              },
+            });
+
+            recordReferralCredit('campaign', 'created');
 
                   await NotificationService.notifyUser(
                     referrer.id,
