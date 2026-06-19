@@ -309,4 +309,40 @@ model Announcement {
   isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
-}
+}## 15. Monitoring
+
+- Backend monitoring is exposed at `GET /metrics` in Prometheus text format.
+- Metrics live under `src/monitoring` and use `prom-client`.
+- `/metrics` is mounted before obfuscation middleware, so it stays plain text and scrapeable.
+- Custom metrics currently include:
+  - `http_requests_total`
+  - `http_request_duration_seconds`
+  - `satsearn_task_submissions_total`
+  - `satsearn_standalone_submissions_total`
+  - `satsearn_quiz_submissions_total`
+  - `satsearn_withdrawal_requests_total`
+  - `satsearn_referral_credits_total`
+  - `satsearn_cron_runs_total`
+  - `satsearn_cron_failures_total`
+  - `satsearn_manual_review_queue`
+  - `satsearn_pending_withdrawals`
+  - `satsearn_negative_balance_users`
+- Gauge queries are cached briefly in-memory to avoid expensive database work on every scrape.
+- Label cardinality rules:
+  - allowed: `method`, `route`, `status_code`, `result`, `source`, `job`
+  - avoid: user IDs, emails, submission IDs, campaign titles, raw dynamic URLs
+
+### Local monitoring stack
+
+- Prometheus config: `monitoring/prometheus/prometheus.yml`
+- Grafana provisioning: `monitoring/grafana/provisioning`
+- Compose stack: `monitoring/docker-compose.yml`
+- Start the backend on `http://localhost:8080`, then run `docker compose -f monitoring/docker-compose.yml up -d`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3001`
+
+### Verification
+
+- Build backend: `npm run build`
+- Scrape manually: `curl http://localhost:8080/metrics`
+- Confirm the response is plain text and includes both runtime and `satsearn_*` metrics.

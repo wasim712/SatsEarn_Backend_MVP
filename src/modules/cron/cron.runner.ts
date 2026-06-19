@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { recordCronFailure, recordCronRun } from '../../monitoring/prometheus';
 import { CronService } from './cron.service';
 
 export const startCronJobs = () => {
@@ -10,6 +11,7 @@ export const startCronJobs = () => {
     console.log('[CRON] Executing review and unlock sweeps...');
 
     try {
+      recordCronRun('scheduler_sweep', 'started');
       // 1. Reconcile any corrupted (negative) balances first
       const reconcileResult = await CronService.reconcileNegativeBalances();
       if (reconcileResult.message !== 'No corrupted balances found.') {
@@ -39,7 +41,11 @@ export const startCronJobs = () => {
       if (quizUnlockResult.message !== 'No quiz rewards are ready to unlock.') {
         console.log(`[CRON QUIZ UNLOCK]: ${quizUnlockResult.message}`);
       }
+
+      recordCronRun('scheduler_sweep', 'success');
     } catch (error: any) {
+      recordCronFailure('scheduler_sweep');
+      recordCronRun('scheduler_sweep', 'failed');
       console.error('[CRON FAILED]:', error.message);
     }
   });
