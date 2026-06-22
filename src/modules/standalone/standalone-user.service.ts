@@ -8,6 +8,7 @@ import {
   getStandaloneRewardForUser,
   getStandaloneUnlockAt,
 } from './standalone.helpers';
+import { isDoubleRewardActive, applyDoubleReward } from '../../utils/reward.util';
 
 export class StandaloneUserService {
   private static isWithinNewUserWindow(createdAt: Date, maxAgeDays: number | null | undefined) {
@@ -56,7 +57,7 @@ export class StandaloneUserService {
         userSubmission: task.submissions[0] || null,
         hasStarted: task.submissions.length > 0,
         isCompleted: ['PENDING_24H', 'LOCKED_15D', 'WITHDRAWABLE', 'MANUAL_REVIEW'].includes(task.submissions[0]?.status || ''),
-        doubleRewardsActive: false,
+        doubleRewardsActive: isDoubleRewardActive(task.doubleRewardsStartAt, task.doubleRewardsEndAt),
       }));
   }
 
@@ -94,7 +95,7 @@ export class StandaloneUserService {
       ...task,
       taskRewardSats: getStandaloneDisplayReward(task, user),
       userSubmission: task.submissions[0] || null,
-      doubleRewardsActive: false,
+      doubleRewardsActive: isDoubleRewardActive(task.doubleRewardsStartAt, task.doubleRewardsEndAt),
     };
   }
 
@@ -154,7 +155,10 @@ export class StandaloneUserService {
     else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
     else determinedStatus = SubmissionStatus.REJECTED;
 
-    const workerReward = getStandaloneRewardForUser(task.tierRewardMatrix, user);
+    const workerReward = applyDoubleReward(
+      getStandaloneRewardForUser(task.tierRewardMatrix, user),
+      isDoubleRewardActive(task.doubleRewardsStartAt, task.doubleRewardsEndAt),
+    );
     const xpReward = Number(task.xpReward || 0);
 
     const submission = existing && existing.status === SubmissionStatus.REJECTED
