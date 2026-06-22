@@ -37,9 +37,20 @@ export class AdminSubmissionService {
       const user = submission.user as any;
       const isPremium = TierUtils.isPremiumActive(user);
       const activeTier = isPremium ? user.premiumTier : TierUtils.getFreeTier(user.totalXp || 0);
+      const campaign = submission.task.campaign;
+      const campaignMatrix = (campaign?.tierRewardMatrix || {}) as Record<string, number>;
+      const overrideMatrix = (submission.task.tierRewardMatrixOverride || {}) as Record<string, number>;
+      const tierKey = String(activeTier || '');
+      const configuredReward = Number(overrideMatrix[tierKey] || campaignMatrix[tierKey] || 0);
+      const isDoubleActive = isDoubleRewardActive(
+        campaign?.doubleRewardsStartAt,
+        campaign?.doubleRewardsEndAt,
+      );
+      const displayRewardSats = applyDoubleReward(configuredReward, isDoubleActive);
 
       return {
         ...submission,
+        displayRewardSats,
         user: {
           ...submission.user,
           isPremium,

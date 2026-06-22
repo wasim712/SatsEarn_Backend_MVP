@@ -51,9 +51,27 @@ export class StandaloneAdminService {
   }
 
   static async getTaskById(taskId: string) {
-    const task = await prisma.standaloneTask.findUnique({ where: { id: taskId } });
+    const task = await prisma.standaloneTask.findUnique({
+      where: { id: taskId },
+      include: {
+        _count: {
+          select: {
+            submissions: {
+              where: {
+                status: {
+                  in: ['PENDING_24H', 'MANUAL_REVIEW', 'LOCKED_15D', 'WITHDRAWABLE'],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     if (!task) throw new Error('Standalone task not found');
-    return task;
+    return {
+      ...task,
+      completionsCount: Number(task._count?.submissions || 0),
+    };
   }
 
   static async updateTask(taskId: string, data: any) {

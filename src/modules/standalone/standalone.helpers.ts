@@ -7,6 +7,7 @@ import {
   evaluateDailyActivityStreak,
   getNextStreakMilestone,
   getStreakMilestoneReward,
+  isDoubleRewardActive,
 } from '../../utils/reward.util';
 import { NotificationService } from '../notifications/notification.service';
 import { recordReferralCredit, recordStandaloneSubmission } from '../../monitoring/prometheus';
@@ -275,6 +276,10 @@ export function getStandaloneUnlockAt(status: SubmissionStatus) {
   return status === SubmissionStatus.PENDING_24H ? getReviewReleaseAt() : null;
 }
 
-export function getStandaloneDisplayReward(task: { tierRewardMatrix: unknown }, user: Pick<User, 'totalXp' | 'premiumTier' | 'premiumExpiresAt'>) {
-  return applyDoubleReward(getStandaloneRewardForUser(task.tierRewardMatrix, user), false);
+export function getStandaloneDisplayReward(
+  task: { tierRewardMatrix: unknown; doubleRewardsStartAt?: Date | null; doubleRewardsEndAt?: Date | null },
+  user: Pick<User, 'totalXp' | 'premiumTier' | 'premiumExpiresAt'>,
+) {
+  const isDoubleActive = isDoubleRewardActive(task.doubleRewardsStartAt, task.doubleRewardsEndAt);
+  return applyDoubleReward(getStandaloneRewardForUser(task.tierRewardMatrix, user), isDoubleActive);
 }

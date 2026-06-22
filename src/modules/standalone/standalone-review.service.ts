@@ -9,6 +9,7 @@ import {
   splitMsats,
 } from '../../utils/submission-flow.util';
 import { getStandaloneRewardForUser } from './standalone.helpers';
+import { applyDoubleReward, isDoubleRewardActive } from '../../utils/reward.util';
 
 export class StandaloneReviewService {
   static async getPendingSubmissions() {
@@ -90,9 +91,16 @@ export class StandaloneReviewService {
 
         if (submittingUser) {
           // Calculate reward from standalone task tier matrix
-          const workerReward = getStandaloneRewardForUser(
-            existingSubmission.standaloneTask.tierRewardMatrix,
-            submittingUser as any,
+          const isDoubleActive = isDoubleRewardActive(
+            existingSubmission.standaloneTask.doubleRewardsStartAt,
+            existingSubmission.standaloneTask.doubleRewardsEndAt,
+          );
+          const workerReward = applyDoubleReward(
+            getStandaloneRewardForUser(
+              existingSubmission.standaloneTask.tierRewardMatrix,
+              submittingUser as any,
+            ),
+            isDoubleActive,
           );
 
           if (workerReward > 0) {
@@ -141,7 +149,10 @@ export class StandaloneReviewService {
                 // Referral commission is based on BASIC tier reward, not the referred user's actual tier reward
                 const taskMatrix = (existingSubmission.standaloneTask.tierRewardMatrix || {}) as Record<string, number>;
                 const basicReward = Number(taskMatrix['BASIC'] || 0);
-                const referralBaseReward = basicReward > 0 ? basicReward : workerReward;
+                const referralBaseReward = applyDoubleReward(
+                  basicReward > 0 ? basicReward : getStandaloneRewardForUser(existingSubmission.standaloneTask.tierRewardMatrix, submittingUser as any),
+                  isDoubleActive,
+                );
                 let effectiveMsats = getReferralBonusMsats(referralBaseReward, commissionPercent);
 
                 // Apply cap for free-tier referrers
