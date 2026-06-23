@@ -40,15 +40,53 @@ export class CronService {
         continue;
       }
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          premiumTier: user.queuedPremiumTier,
-          premiumExpiresAt: user.queuedPremiumExpiresAt,
-          queuedPremiumTier: null,
-          queuedPremiumStartsAt: null,
-          queuedPremiumExpiresAt: null,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            premiumTier: user.queuedPremiumTier,
+            premiumExpiresAt: user.queuedPremiumExpiresAt,
+            queuedPremiumTier: null,
+            queuedPremiumStartsAt: null,
+            queuedPremiumExpiresAt: null,
+          },
+        });
+
+        const refreshed = await tx.user.findUnique({
+          where: { id: user.id },
+          select: {
+            premiumExpiresAt: true,
+            billingRecords: {
+              where: { premiumExpiresAt: { not: null } },
+              orderBy: [{ premiumExpiresAt: 'asc' }, { createdAt: 'asc' }],
+              select: {
+                premiumTier: true,
+                premiumExpiresAt: true,
+              },
+            },
+          },
+        });
+
+        if (refreshed?.premiumExpiresAt) {
+          const nextQueuedRecord = refreshed.billingRecords.find(
+            (record) => record.premiumExpiresAt && new Date(record.premiumExpiresAt).getTime() > new Date(refreshed.premiumExpiresAt as Date).getTime(),
+          );
+
+          await tx.user.update({
+            where: { id: user.id },
+            data: nextQueuedRecord
+              ? {
+                  queuedPremiumTier: nextQueuedRecord.premiumTier,
+                  queuedPremiumStartsAt: refreshed.premiumExpiresAt,
+                  queuedPremiumExpiresAt: nextQueuedRecord.premiumExpiresAt,
+                }
+              : {
+                  queuedPremiumTier: null,
+                  queuedPremiumStartsAt: null,
+                  queuedPremiumExpiresAt: null,
+                },
+          });
+        }
       });
 
       try {
@@ -470,4 +508,3 @@ export class CronService {
     };
   }
 }
-
