@@ -11,6 +11,7 @@
     "dev": "npx prisma generate && nodemon --watch src --ext ts --exec ts-node src/server.ts",
     "migrate:prod": "npx prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
+    "reset:premium-billing-test": "ts-node scripts/reset-premium-billing-test.ts",
     "check:referral": "ts-node scripts/check-referral-status.ts",
     "fix:negative-balances": "ts-node scripts/fix-negative-balances.ts",
     "test:campaign-max": "ts-node scripts/test-campaign-max-completions-update.ts",

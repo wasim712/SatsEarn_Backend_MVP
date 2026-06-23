@@ -90,6 +90,70 @@ function buildOnboardingState(user: {
   };
 }
 
+function getDurationLabel(createdAt: Date, premiumExpiresAt: Date | null | undefined) {
+  if (!premiumExpiresAt) return 'UNKNOWN';
+  const diffMs = premiumExpiresAt.getTime() - createdAt.getTime();
+  const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays >= 360) return 'YEARLY';
+  if (diffDays >= 27) return 'MONTHLY';
+  return `${diffDays} DAYS`;
+}
+
+async function rebuildPremiumQueueCache(tx: typeof prisma, userId: string) {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: {
+      premiumTier: true,
+      premiumExpiresAt: true,
+      billingRecords: {
+        where: { premiumExpiresAt: { not: null } },
+        orderBy: [{ premiumExpiresAt: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          premiumTier: true,
+          premiumExpiresAt: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  if (!user.premiumExpiresAt) {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        queuedPremiumTier: null,
+        queuedPremiumStartsAt: null,
+        queuedPremiumExpiresAt: null,
+      },
+    });
+    return;
+  }
+
+  const nextQueuedRecord = user.billingRecords.find(
+    (record) => record.premiumExpiresAt && new Date(record.premiumExpiresAt).getTime() > new Date(user.premiumExpiresAt as Date).getTime(),
+  );
+
+  await tx.user.update({
+    where: { id: userId },
+    data: nextQueuedRecord
+      ? {
+          queuedPremiumTier: nextQueuedRecord.premiumTier,
+          queuedPremiumStartsAt: user.premiumExpiresAt,
+          queuedPremiumExpiresAt: nextQueuedRecord.premiumExpiresAt,
+        }
+      : {
+          queuedPremiumTier: null,
+          queuedPremiumStartsAt: null,
+          queuedPremiumExpiresAt: null,
+        },
+  });
+}
+
 export class UserAccountService {
   static async getPremiumPricing() {
     const settings = await prisma.platformSettings.findFirst();
@@ -154,6 +218,31 @@ export class UserAccountService {
     const isPremium = Boolean(activePremiumTier);
     const activeTier = activePremiumTier || TierUtils.getFreeTier(user.totalXp);
     const pricing = await this.getPremiumPricing();
+    const activePremiumEnd = user.premiumExpiresAt || null;
+
+    const premiumQueue = (user.billingRecords || [])
+      .filter((record) => record.premiumExpiresAt)
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+      .filter((record) => {
+        if (!record.premiumExpiresAt) return false;
+        if (!activePremiumEnd) return false;
+        return new Date(record.premiumExpiresAt).getTime() > new Date(activePremiumEnd).getTime();
+      })
+      .map((record, index, records) => {
+        const previousEnd = index === 0 ? activePremiumEnd : records[index - 1].premiumExpiresAt;
+        return {
+          id: record.id,
+          premiumTier: record.premiumTier,
+          billingSource: record.billingSource,
+          amountUsd: record.amountUsd,
+          amountSats: record.amountSats,
+          createdAt: record.createdAt,
+          premiumStartsAt: previousEnd,
+          premiumExpiresAt: record.premiumExpiresAt,
+          billingCycle: getDurationLabel(new Date(record.createdAt), record.premiumExpiresAt),
+          adminNotes: record.adminNotes,
+        };
+      });
 
     return {
       ...decrypted,
@@ -164,6 +253,7 @@ export class UserAccountService {
       queuedPremiumTier: user.queuedPremiumTier,
       queuedPremiumStartsAt: user.queuedPremiumStartsAt,
       queuedPremiumExpiresAt: user.queuedPremiumExpiresAt,
+      premiumQueue,
       balanceAvailable: user.balanceAvailable,
       premiumPricing: pricing,
       billingHistory: user.billingRecords,
@@ -281,21 +371,25 @@ export class UserAccountService {
       ? PREMIUM_TIER_DURATION_DAYS[data.plan].monthly
       : PREMIUM_TIER_DURATION_DAYS[data.plan].yearly;
 
-    const hasActiveCurrentPlan = Boolean(user.premiumTier && user.premiumExpiresAt && user.premiumExpiresAt > new Date());
+    const now = new Date();
+    const hasActiveCurrentPlan = Boolean(user.premiumTier && user.premiumExpiresAt && user.premiumExpiresAt > now);
     const isSameAsCurrentTier = hasActiveCurrentPlan && user.premiumTier === data.plan;
-    const hasQueuedPlan = Boolean(user.queuedPremiumTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > new Date());
+    const hasQueuedPlan = Boolean(user.queuedPremiumTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > now);
     const isSameAsQueuedTier = hasQueuedPlan && user.queuedPremiumTier === data.plan;
 
-    const currentStartFrom = hasActiveCurrentPlan && user.premiumExpiresAt ? user.premiumExpiresAt : new Date();
+    const currentStartFrom = hasActiveCurrentPlan && user.premiumExpiresAt ? user.premiumExpiresAt : now;
     const premiumExpiresAt = addDays(currentStartFrom, durationDays);
 
     const shouldQueueTier = hasActiveCurrentPlan && user.premiumTier !== data.plan;
-    const queuedPremiumStartsAt = shouldQueueTier
-      ? (user.queuedPremiumStartsAt || user.premiumExpiresAt || new Date())
-      : null;
-    const queuedStackBase = isSameAsQueuedTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > new Date()
+    const queueBaseStart = hasQueuedPlan && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > now
       ? user.queuedPremiumExpiresAt
-      : (user.premiumExpiresAt || new Date());
+      : (user.premiumExpiresAt || now);
+    const queuedPremiumStartsAt = shouldQueueTier
+      ? queueBaseStart
+      : null;
+    const queuedStackBase = isSameAsQueuedTier && user.queuedPremiumExpiresAt && user.queuedPremiumExpiresAt > now
+      ? user.queuedPremiumExpiresAt
+      : queueBaseStart;
     const queuedPremiumExpiresAt = shouldQueueTier
       ? addDays(queuedStackBase, durationDays)
       : null;
@@ -340,6 +434,8 @@ export class UserAccountService {
             : undefined,
         },
       });
+
+      await rebuildPremiumQueueCache(tx as typeof prisma, user.id);
     });
 
     await NotificationService.notifyAdmins(
