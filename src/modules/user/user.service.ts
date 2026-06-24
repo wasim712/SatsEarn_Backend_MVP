@@ -661,6 +661,14 @@ export class UserService {
     return await UserContentService.getPublishedBlogs();
   }
 
+  static async getPublishedBlogById(id: string) {
+    return await UserContentService.getPublishedBlogById(id);
+  }
+
+  static async getPublishedBlogBySlug(slug: string) {
+    return await UserContentService.getPublishedBlogBySlug(slug);
+  }
+
   static async getActiveFaqs() {
     return await UserContentService.getActiveFaqs();
   }

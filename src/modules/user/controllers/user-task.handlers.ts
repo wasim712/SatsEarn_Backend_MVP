@@ -118,6 +118,29 @@ export const userTaskHandlers = {
     try { res.status(200).json(await UserService.getPublishedBlogs()); }
     catch (error: any) { res.status(500).json({ error: error.message }); }
   },
+  async getPublishedBlogByIdentifier(req: Request, res: Response) {
+    try {
+      const identifier = String(req.params.identifier || '').trim();
+
+      if (!identifier) {
+        res.status(400).json({ error: 'Blog identifier is required.' });
+        return;
+      }
+
+      const blog = identifier.includes('-')
+        ? await UserService.getPublishedBlogBySlug(identifier)
+        : await UserService.getPublishedBlogById(identifier);
+
+      if (!blog) {
+        res.status(404).json({ error: 'Blog not found.' });
+        return;
+      }
+
+      res.status(200).json(blog);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
   async getActiveFaqs(_req: Request, res: Response) {
     try { res.status(200).json(await UserService.getActiveFaqs()); }
     catch (error: any) { res.status(500).json({ error: error.message }); }

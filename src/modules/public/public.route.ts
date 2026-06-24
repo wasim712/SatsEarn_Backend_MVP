@@ -206,5 +206,7 @@ router.get('/countries', (_req, res) => {
   res.status(200).json(COUNTRIES);
 });
 
+router.get('/blogs', UserController.getPublishedBlogs);
+router.get('/blogs/:identifier', UserController.getPublishedBlogByIdentifier);
 router.get('/announcements/active', UserController.activeAnnouncement);
 export default router
