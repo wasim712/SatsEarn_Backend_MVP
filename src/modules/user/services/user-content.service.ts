@@ -8,6 +8,24 @@ export class UserContentService {
     });
   }
 
+  static async getPublishedBlogById(id: string) {
+    return prisma.blogPost.findFirst({
+      where: {
+        id,
+        isPublished: true,
+      },
+    });
+  }
+
+  static async getPublishedBlogBySlug(slug: string) {
+    return prisma.blogPost.findFirst({
+      where: {
+        slug,
+        isPublished: true,
+      },
+    });
+  }
+
   static async getActiveFaqs() {
     return prisma.faqItem.findMany({
       where: { isActive: true },

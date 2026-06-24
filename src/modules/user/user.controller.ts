@@ -28,6 +28,7 @@ export class UserController {
   static async getMyBugReports(req: Request, res: Response) { return userTaskHandlers.getMyBugReports(req, res); }
   static async getBugBountyStats(req: Request, res: Response) { return userTaskHandlers.getBugBountyStats(req, res); }
   static async getPublishedBlogs(req: Request, res: Response) { return userTaskHandlers.getPublishedBlogs(req, res); }
+  static async getPublishedBlogByIdentifier(req: Request, res: Response) { return userTaskHandlers.getPublishedBlogByIdentifier(req, res); }
   static async getActiveFaqs(req: Request, res: Response) { return userTaskHandlers.getActiveFaqs(req, res); }
   static async getSubmissionHistory(req: Request, res: Response) { return userTaskHandlers.getSubmissionHistory(req, res); }
   static async submitQuiz(req: Request, res: Response) { return userTaskHandlers.submitQuiz(req, res); }
