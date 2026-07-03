@@ -152,7 +152,6 @@ export class AdminCampaignService {
 
   static async getAllCampaigns() {
     const campaigns = await prisma.campaign.findMany({
-      where: { isActive: true },
       include: { tasks: { select: { requirements: true } } },
       orderBy: { createdAt: 'desc' },
     });
