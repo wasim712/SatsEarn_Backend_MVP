@@ -45,7 +45,7 @@ export class StandaloneAdminService {
 
   static async getAllTasks() {
     return prisma.standaloneTask.findMany({
-      where: { isActive: true },
+      where: {},
       orderBy: { createdAt: 'desc' },
     });
   }
