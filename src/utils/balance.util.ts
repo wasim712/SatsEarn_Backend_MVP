@@ -199,7 +199,7 @@ export async function computeUserBalances(userId: string) {
       }
 
       case 'WELCOME_BONUS': {
-        available += sats;
+        locked += sats;
         break;
       }
 

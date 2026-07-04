@@ -190,29 +190,44 @@ export class AuthService {
         }
 
         // 2. Fetch Gamification Settings for Welcome Bonus
-        const settings = await AdminService.getGamificationSettings().catch(() => ({ welcomeBonusSats: 0 }));
+        const settings = await AdminService.getGamificationSettings().catch(() => ({ welcomeBonusSats: 50 }));
 
         // 3. Activate User & Grant Bonus
-        const activatedUser = await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                isVerified: true,
-                otpCode: null, 
-                otpExpiresAt: null,
-                balanceLocked: settings.welcomeBonusSats
-            },
-            select: {
-                id: true,
-                email: true,
-                fullName: true,
-                country: true,
-                referralCode: true,
-                role: true,
-                premiumExpiresAt: true,
-                totalXp: true,
-                hasCompletedOnboarding: true,
-                hasSkippedOnboarding: true,
-            },
+        const activatedUser = await prisma.$transaction(async (tx) => {
+            const updatedUser = await tx.user.update({
+                where: { id: user.id },
+                data: {
+                    isVerified: true,
+                    otpCode: null,
+                    otpExpiresAt: null,
+                    balanceLocked: settings.welcomeBonusSats,
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    country: true,
+                    referralCode: true,
+                    role: true,
+                    premiumExpiresAt: true,
+                    totalXp: true,
+                    hasCompletedOnboarding: true,
+                    hasSkippedOnboarding: true,
+                },
+            });
+
+            if (settings.welcomeBonusSats > 0) {
+                await tx.ledger.create({
+                    data: {
+                        userId: user.id,
+                        amountSats: settings.welcomeBonusSats,
+                        type: 'WELCOME_BONUS',
+                        description: 'Signup welcome bonus',
+                    },
+                });
+            }
+
+            return updatedUser;
         });
 
         // 4. Fire Welcome Email

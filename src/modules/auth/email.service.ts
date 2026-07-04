@@ -29,7 +29,7 @@ export class EmailService {
                         <p style="font-size: 14px; color: #666;">This code will expire in 15 minutes. If you did not request this email, you can safely ignore it.</p>
                         <br/>
                         <p>Best regards,</p>
-                        <p><strong>The Sats Earn Team</strong></p>
+                        <p><strong>The SatsEarn Team</strong></p>
                     </div>
                 `
             });
@@ -66,7 +66,7 @@ export class EmailService {
                         <p style="font-size: 14px; color: #666;">This code will expire in 15 minutes. If you did not request a password reset, please ignore this email or contact support if you have concerns.</p>
                         <br/>
                         <p>Best regards,</p>
-                        <p><strong>The Sats Earn Team</strong></p>
+                        <p><strong>The SatsEarn Team</strong></p>
                     </div>
                 `
             });
@@ -90,7 +90,7 @@ export class EmailService {
             const { data, error } = await resend.emails.send({
                 from: SENDER_EMAIL,
                 to: email,
-                subject: 'Welcome to Sats Earn! 🚀',
+                subject: 'Welcome to SatsEarn! 🚀',
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
                         <h1 style="color: #F7931A;">Welcome aboard, ${fullName}!</h1>
@@ -107,7 +107,7 @@ export class EmailService {
                         
                         <br/>
                         <p>Best regards,</p>
-                        <p><strong>The Sats Earn Team</strong></p>
+                        <p><strong>The SatsEarn Team</strong></p>
                     </div>
                 `
             });
