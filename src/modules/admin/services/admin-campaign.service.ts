@@ -387,7 +387,7 @@ export class AdminCampaignService {
   }
 
   static async updateTask(campaignId: string, taskId: string, data: any) {
-    await this.getTaskById(campaignId, taskId);
+    const existingTask = await this.getTaskById(campaignId, taskId);
 
     const {
       title,
@@ -398,6 +398,7 @@ export class AdminCampaignService {
         tierRewardMatrixOverride,
         xpRewardOverride,
         requirements,
+        requiredPlatform,
       } = data;
 
     return await prisma.task.update({
@@ -410,7 +411,11 @@ export class AdminCampaignService {
         baseRewardSatsOverride,
         tierRewardMatrixOverride,
         xpRewardOverride,
-        requirements,
+        requirements: {
+          ...(existingTask.requirements as any || {}),
+          ...(requirements || {}),
+          ...(requiredPlatform ? { requiredPlatform } : {}),
+        },
       },
     });
   }
