@@ -42,7 +42,7 @@ const envSchema = z.object({
   // Optional: highly recommended to keep your sender email dynamically configured
   EMAIL_FROM: z
     .string()
-    .default('Sats Earn <onboarding@resend.dev>'),
+    .default('SatsEarn <onboarding@resend.dev>'),
 
   REDIS_URL: z
     .string()

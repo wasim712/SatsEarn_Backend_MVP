@@ -49,6 +49,8 @@ const DEFAULT_PREMIUM_YEARLY_USD_MATRIX = {
   FOUNDER: 249.99,
 };
 
+const DEFAULT_WELCOME_BONUS_SATS = 50;
+const DEFAULT_SECURITY_LOCK_DAYS = 15;
 const DEFAULT_BTC_PRICE_USD = 90000;
 
 export class AdminSettingsService {
@@ -58,6 +60,8 @@ export class AdminSettingsService {
     if (!settings) {
       settings = await prisma.platformSettings.create({
         data: {
+          welcomeBonusSats: DEFAULT_WELCOME_BONUS_SATS,
+          securityLockDays: DEFAULT_SECURITY_LOCK_DAYS,
           tierMinWithdrawalMatrix: {
             BASIC: 25000, COPPER: 25000, BRONZE: 25000, SILVER: 25000, GOLD: 25000,
             PLATINUM: 25000, DIAMOND: 25000, CROWN: 25000, ELITE: 25000, FOUNDER: 25000,
@@ -72,10 +76,24 @@ export class AdminSettingsService {
       });
     }
 
-    if (!settings.premiumMonthlySatsMatrix || !settings.premiumYearlySatsMatrix || !settings.premiumMonthlyUsdMatrix || !settings.premiumYearlyUsdMatrix || !settings.userSidebarConfig || !settings.btcPriceUsd) {
+    if (
+      settings.welcomeBonusSats == null
+      || settings.welcomeBonusSats <= 0
+      || settings.securityLockDays == null
+      || !settings.premiumMonthlySatsMatrix
+      || !settings.premiumYearlySatsMatrix
+      || !settings.premiumMonthlyUsdMatrix
+      || !settings.premiumYearlyUsdMatrix
+      || !settings.userSidebarConfig
+      || !settings.btcPriceUsd
+    ) {
       settings = await prisma.platformSettings.update({
         where: { id: settings.id },
         data: {
+          welcomeBonusSats: settings.welcomeBonusSats && settings.welcomeBonusSats > 0
+            ? settings.welcomeBonusSats
+            : DEFAULT_WELCOME_BONUS_SATS,
+          securityLockDays: settings.securityLockDays ?? DEFAULT_SECURITY_LOCK_DAYS,
           premiumMonthlySatsMatrix: settings.premiumMonthlySatsMatrix || DEFAULT_PREMIUM_MONTHLY_SATS_MATRIX,
           premiumYearlySatsMatrix: settings.premiumYearlySatsMatrix || DEFAULT_PREMIUM_YEARLY_SATS_MATRIX,
           premiumMonthlyUsdMatrix: settings.premiumMonthlyUsdMatrix || DEFAULT_PREMIUM_MONTHLY_USD_MATRIX,
