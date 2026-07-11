@@ -61,10 +61,6 @@ export function evaluateDailyActivityStreak(lastActivityAt: Date | null | undefi
     return { nextStreak: currentStreak, didCountToday: true, reset: false };
   }
 
-  if (elapsedMs >= twentyFourHoursMs) {
-    return { nextStreak: 1, didCountToday: false, reset: true };
-  }
-
   const today = normalizeUtcDay(now);
   const lastActiveDay = normalizeUtcDay(lastActivityAt);
   const diffDays = Math.floor((today.getTime() - lastActiveDay.getTime()) / twentyFourHoursMs);
