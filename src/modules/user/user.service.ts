@@ -270,7 +270,7 @@ export class UserService {
 
     if (!user) throw new Error('User not found');
 
-    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak, new Date(), user.timezone);
 
     if (streakEvaluation.reset && user.currentStreak !== 0) {
       await prisma.user.update({

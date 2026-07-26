@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { CryptoUtil } from '../../utils/crypto.util';
 import { TierUtils } from '../../utils/tier.utils';
+import { isValidTimeZone } from '../../utils/reward.util';
 
 type AuthUserPayload = {
     id: string;
@@ -30,6 +31,7 @@ export interface SignUpInput {
     referralCode?: string;
     username: string;
     clientIp?: string; // 🚀 NEW: Accept IP from the controller
+    timezone?: string; // IANA timezone (e.g. "Asia/Kolkata"), detected client-side
 }
 
 export class AuthService {
@@ -163,7 +165,8 @@ export class AuthService {
                 otpCode: CryptoUtil.encrypt(otpCode),
                 otpExpiresAt,
                 registrationIp: CryptoUtil.encrypt(clientIp), // 🚀 NEW: Save registration IP
-                lastIpAddress: CryptoUtil.encrypt(clientIp)   // 🚀 NEW: Save last IP
+                lastIpAddress: CryptoUtil.encrypt(clientIp),   // 🚀 NEW: Save last IP
+                ...(data.timezone && isValidTimeZone(data.timezone) ? { timezone: data.timezone } : {}),
             }
         });
 

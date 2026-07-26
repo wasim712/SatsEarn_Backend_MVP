@@ -24,10 +24,37 @@ export function applyDoubleReward(amount: number, isActive: boolean) {
   return isActive ? amount * 2 : amount;
 }
 
+export function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeUtcDay(date: Date) {
   const normalized = new Date(date);
   normalized.setUTCHours(0, 0, 0, 0);
   return normalized;
+}
+
+// Buckets a timestamp into the user's local calendar day (not UTC), so streaks
+// aren't broken/collapsed by users whose activity falls near their own midnight
+// but on the same UTC calendar date (or vice versa).
+export function normalizeToTimezoneDay(date: Date, timeZone: string = 'UTC') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === 'year')?.value;
+  const month = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+
+  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
 }
 
 export function getStreakMilestoneReward(day: number) {
@@ -45,7 +72,12 @@ export function getNextStreakMilestone(lastClaimedMilestone: number) {
     .find((milestone) => milestone > lastClaimedMilestone) || null;
 }
 
-export function evaluateDailyActivityStreak(lastActivityAt: Date | null | undefined, currentStreak: number, now = new Date()) {
+export function evaluateDailyActivityStreak(
+  lastActivityAt: Date | null | undefined,
+  currentStreak: number,
+  now = new Date(),
+  timeZone: string = 'UTC',
+) {
   if (!lastActivityAt) {
     return { nextStreak: 1, didCountToday: false, reset: false };
   }
@@ -61,9 +93,16 @@ export function evaluateDailyActivityStreak(lastActivityAt: Date | null | undefi
     return { nextStreak: currentStreak, didCountToday: true, reset: false };
   }
 
-  const today = normalizeUtcDay(now);
-  const lastActiveDay = normalizeUtcDay(lastActivityAt);
-  const diffDays = Math.floor((today.getTime() - lastActiveDay.getTime()) / twentyFourHoursMs);
+  let today: Date;
+  let lastActiveDay: Date;
+  try {
+    today = normalizeToTimezoneDay(now, timeZone);
+    lastActiveDay = normalizeToTimezoneDay(lastActivityAt, timeZone);
+  } catch {
+    today = normalizeToTimezoneDay(now, 'UTC');
+    lastActiveDay = normalizeToTimezoneDay(lastActivityAt, 'UTC');
+  }
+  const diffDays = Math.round((today.getTime() - lastActiveDay.getTime()) / twentyFourHoursMs);
 
   if (diffDays <= 0) {
     return { nextStreak: currentStreak, didCountToday: true, reset: false };

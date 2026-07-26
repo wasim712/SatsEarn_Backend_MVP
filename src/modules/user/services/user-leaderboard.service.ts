@@ -108,13 +108,14 @@ export class UserLeaderboardService {
         avatarUrl: true,
         currentStreak: true,
         lastActivityAt: true,
+        timezone: true,
       },
     });
 
     return users
       .map((user) => ({
         ...user,
-        currentStreak: evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak).reset
+        currentStreak: evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak, new Date(), user.timezone).reset
           ? 0
           : user.currentStreak,
       }))
