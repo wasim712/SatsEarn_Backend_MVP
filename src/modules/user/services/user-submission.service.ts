@@ -70,6 +70,7 @@ export class UserSubmissionService {
         lastClaimedStreakMilestone: true,
         premiumTier: true,
         premiumExpiresAt: true,
+        timezone: true,
       },
     });
     if (!user) throw new Error('User not found.');
@@ -135,7 +136,7 @@ export class UserSubmissionService {
       ? task.xpRewardOverride
       : (task.campaign.xpReward ?? 0);
     const xpReward = applyDoubleReward(baseXpReward, isCampaignDoubleRewardsActive);
-    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak, new Date(), user.timezone);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
     const streakMilestoneEligible = !!(
       nextMilestone

@@ -97,6 +97,7 @@ export async function applyStandaloneRewardEffects(params: {
       lastClaimedStreakMilestone: true,
       balancePending: true,
       totalXp: true,
+      timezone: true,
     },
   });
 
@@ -104,7 +105,7 @@ export async function applyStandaloneRewardEffects(params: {
     throw new Error('User not found.');
   }
 
-  const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+  const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak, new Date(), user.timezone);
   const nextStreak = streakEvaluation.nextStreak;
   const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
   const streakBonusSats = nextMilestone && nextStreak >= nextMilestone ? getStreakMilestoneReward(nextMilestone) : 0;

@@ -184,6 +184,7 @@ id               String   @id @default(uuid())
   currentStreak    Int      @default(0)
   lastClaimedStreakMilestone Int @default(0)
   lastActivityAt   DateTime @default(now())
+  timezone         String   @default("UTC") // IANA timezone (e.g. "Asia/Kolkata"), used to bucket streak days by the user's local calendar day instead of UTC
   registrationIp   String?  // The IP they used to create the account
   lastIpAddress    String?  // The IP they last logged in with
   hasCompletedOnboarding Boolean @default(false)

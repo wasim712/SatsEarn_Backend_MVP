@@ -558,6 +558,7 @@ const rewardAllocations = allocateQuizRewardByAttempts(
         lastClaimedStreakMilestone: true,
         premiumTier: true,
         premiumExpiresAt: true,
+        timezone: true,
       },
     });
     if (!user) throw new Error('User not found.');
@@ -567,7 +568,7 @@ const rewardAllocations = allocateQuizRewardByAttempts(
 
     recordQuizSubmission(passed ? 'accepted' : 'rejected');
     const finalRewardXp = computedRewardXp;
-    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak);
+    const streakEvaluation = evaluateDailyActivityStreak(user.lastActivityAt, user.currentStreak, new Date(), user.timezone);
     const nextMilestone = getNextStreakMilestone(user.lastClaimedStreakMilestone);
     const hasPremium = !!(user as any).premiumTier && !!(user as any).premiumExpiresAt && new Date((user as any).premiumExpiresAt) > new Date();
     const streakMilestoneEligible = !!(

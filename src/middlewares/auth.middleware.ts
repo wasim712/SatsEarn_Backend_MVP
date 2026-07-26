@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db/prisma.client';
 import { User } from '@prisma/client';
+import { isValidTimeZone } from '../utils/reward.util';
 
 // 1. Extend the Express Request type to include our Prisma User
 declare global {
@@ -42,6 +43,16 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     if (!dbUser || !dbUser.isActive) {
       res.status(401).json({ error: 'Unauthorized: Account deactivated or deleted.' });
       return;
+    }
+
+    const timezoneHeader = req.headers['x-timezone'];
+    const clientTimezone = Array.isArray(timezoneHeader) ? timezoneHeader[0] : timezoneHeader;
+
+    if (clientTimezone && clientTimezone !== dbUser.timezone && isValidTimeZone(clientTimezone)) {
+      dbUser.timezone = clientTimezone;
+      prisma.user
+        .update({ where: { id: dbUser.id }, data: { timezone: clientTimezone } })
+        .catch((err) => console.error('Failed to persist user timezone:', err));
     }
 
     req.user = dbUser;
