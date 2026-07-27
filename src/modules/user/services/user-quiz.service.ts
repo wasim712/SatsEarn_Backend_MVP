@@ -655,6 +655,17 @@ const rewardAllocations = allocateQuizRewardByAttempts(
           data: {
             currentStreak: streakEvaluation.nextStreak,
             lastActivityAt: new Date(),
+          },
+        });
+
+        // rewardSats/streakBonusSats/unlockAt live on QuizAttempt, not User.
+        // They were previously passed to tx.user.update, which Prisma rejects
+        // at runtime ("Unknown argument"), throwing inside the transaction and
+        // rolling back the whole zero-reward quiz submission — so the user's
+        // daily streak was never actually counted despite the success message.
+        await tx.quizAttempt.update({
+          where: { id: attempt.id },
+          data: {
             rewardSats: 0,
             streakBonusSats: 0,
             unlockAt: null,

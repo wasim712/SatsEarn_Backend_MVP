@@ -112,5 +112,20 @@ export function evaluateDailyActivityStreak(
     return { nextStreak: currentStreak + 1, didCountToday: false, reset: false };
   }
 
+  // diffDays >= 2 normally means a genuinely missed day. But day buckets are
+  // derived from the user's CURRENT timezone, so if that timezone changes
+  // (travel, VPN, a new device sending a different X-Timezone header, or the
+  // one-time migration off the 'UTC' default) the very same history gets
+  // re-bucketed and an unbroken streak can look like a 2-day gap.
+  //
+  // A real missed day always implies at least ~24h of elapsed wall-clock time
+  // (last possible moment of day D to first moment of day D+2). A timezone
+  // re-interpretation implies none. So require both signals to agree before
+  // destroying a streak: bucket distance AND real elapsed time. This costs
+  // nothing for genuine resets and makes streaks immune to timezone churn.
+  if (elapsedMs < twentyFourHoursMs) {
+    return { nextStreak: currentStreak, didCountToday: true, reset: false };
+  }
+
   return { nextStreak: 1, didCountToday: false, reset: true };
 }

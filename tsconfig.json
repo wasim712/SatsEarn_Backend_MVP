@@ -12,5 +12,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*"], // 👈 Keep it simple: everything in src
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
 }
