@@ -37,7 +37,7 @@ app.use(
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-obfuscated', 'x-obfuscated-response', 'x-obfuscated-multipart'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Timezone', 'x-obfuscated', 'x-obfuscated-response', 'x-obfuscated-multipart'],
   }),
 );
 
