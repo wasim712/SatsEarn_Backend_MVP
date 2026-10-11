@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+// Shared rules for any password a signed-in user or a reset sets.
+export const strongPasswordSchema = z.string()
+  .min(8, "Password must be at least 8 characters long")
+  .max(128, "Password must be at most 128 characters long")
+  .regex(/[a-zA-Z]/, "Password must contain at least one letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[\W_]/, "Password must contain at least one special character");
+
 export const signUpSchema = z.object({
   body: z.object({
     email: z.string().email("Invalid email address"),
@@ -21,6 +29,8 @@ export const verifyOtpSchema = z.object({
   body: z.object({
     email: z.string().email(),
     token: z.string().length(6, "OTP must be exactly 6 digits"),
+    // The password chosen at signup; binds activation to whoever set it (see AuthService.verifyOtp).
+    password: z.string().min(1, "Password is required"),
   }),
 });
 
@@ -41,7 +51,7 @@ export const resetPasswordSchema = z.object({
   body: z.object({
     email: z.string().email(),
     token: z.string().length(6, "OTP must be exactly 6 digits"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    newPassword: strongPasswordSchema,
   }),
 });
 export const checkUsername = z.object({

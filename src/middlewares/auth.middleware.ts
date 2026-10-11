@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../db/prisma.client';
 import { User } from '@prisma/client';
 import { isValidTimeZone } from '../utils/reward.util';
+import { verifySessionToken } from '../utils/jwt.util';
 
 // 1. Extend the Express Request type to include our Prisma User
 declare global {
@@ -22,14 +22,13 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     }
 
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET;
 
-    if (!secret) {
+    if (!process.env.JWT_SECRET) {
       res.status(500).json({ error: 'Authentication is not configured on the server.' });
       return;
     }
 
-    const decoded = jwt.verify(token, secret) as { userId: string, role: string };
+    const decoded = verifySessionToken(token);
 
     if (!decoded?.userId) {
       res.status(401).json({ error: 'Unauthorized: Invalid token payload.' });
@@ -42,6 +41,12 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
 
     if (!dbUser || !dbUser.isActive) {
       res.status(401).json({ error: 'Unauthorized: Account deactivated or deleted.' });
+      return;
+    }
+
+    // Password change/reset bumps tokenVersion, which revokes every token issued before it.
+    if ((decoded.tv ?? 0) !== dbUser.tokenVersion) {
+      res.status(401).json({ error: 'Unauthorized: Session expired. Please log in again.' });
       return;
     }
 

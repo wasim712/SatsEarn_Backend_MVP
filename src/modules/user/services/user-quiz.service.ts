@@ -1,9 +1,12 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../db/prisma.client';
 import {
   evaluateDailyActivityStreak,
   getNextStreakMilestone,
   getStreakMilestoneReward,
   isPremiumStreakMilestone,
+  isValidTimeZone,
+  normalizeToTimezoneDay,
 } from '../../../utils/reward.util';
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
@@ -90,6 +93,23 @@ function normalizeQuizDateKey(dateKey?: string) {
   }
 
   return new Date().toISOString().slice(0, 10);
+}
+
+// Only today's quiz can be played: "today" in the user's own timezone or in UTC.
+// Without this, any past (or future) active quiz could be answered for its reward.
+async function resolvePlayableQuizDateKey(userId: string, dateKey?: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+  const timeZone = user?.timezone && isValidTimeZone(user.timezone) ? user.timezone : 'UTC';
+  const now = new Date();
+  const utcToday = now.toISOString().slice(0, 10);
+  const localToday = normalizeToTimezoneDay(now, timeZone).toISOString().slice(0, 10);
+  const requested = normalizeQuizDateKey(dateKey);
+
+  if (requested !== utcToday && requested !== localToday) {
+    throw new Error("Only today's quiz can be played.");
+  }
+
+  return requested;
 }
 
 async function findQuizByDate(dateKey?: string) {
@@ -335,7 +355,7 @@ export class UserQuizService {
   }
 
   static async getTodayQuiz(userId: string, dateKey?: string) {
-    const quiz = await findQuizByDate(dateKey);
+    const quiz = await findQuizByDate(await resolvePlayableQuizDateKey(userId, dateKey));
 
     if (!quiz) {
       throw new Error('There is no active quiz for today. Check back tomorrow!');
@@ -355,7 +375,8 @@ export class UserQuizService {
 
     const savedAnswers = normalizePersistedAnswers(existingAttempt.answers);
     const inProgressResult = buildInProgressResult(quiz as any, savedAnswers);
-    const isCompleted = existingAttempt.passed && existingAttempt.score >= quiz.questions.length;
+    const isCompleted = Boolean(existingAttempt.rewardedAt)
+      || (existingAttempt.passed && existingAttempt.score >= quiz.questions.length);
 
     return {
       status: isCompleted ? 'submitted' as const : 'available' as const,
@@ -371,18 +392,72 @@ export class UserQuizService {
   }
 
   static async submitDailyQuizAnswer(userId: string, questionId: string, answer: string, dateKey?: string) {
-    const quiz = await findQuizByDate(dateKey);
+    const quiz = await findQuizByDate(await resolvePlayableQuizDateKey(userId, dateKey));
 
     if (!quiz) throw new Error('Quiz not found or has expired.');
 
     const question = quiz.questions.find((item) => item.id === questionId);
     if (!question) throw new Error('Invalid question selected.');
 
-    const existingAttempt = await prisma.quizAttempt.findUnique({
+    // Serializable read-modify-write: parallel guesses on one question would otherwise all read
+    // attemptCount 0, and the correct one would be recorded as a first try.
+    let recorded: Awaited<ReturnType<typeof UserQuizService.recordDailyQuizAnswer>>;
+    try {
+      recorded = await prisma.$transaction(
+        (tx) => this.recordDailyQuizAnswer(tx, userId, quiz, question, answer),
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (error: any) {
+      if (error?.code === 'P2034' || error?.code === 'P2002') {
+        throw new Error('Another answer for this quiz is being processed. Please try again.');
+      }
+      throw error;
+    }
+
+    const { updatedAnswers, updatedEntry, nextAttemptCount, isCorrect } = recorded;
+    const solvedCount = updatedAnswers.filter((item) => item.isCorrect).length;
+    const isQuizComplete = solvedCount === quiz.questions.length;
+
+    if (isQuizComplete) {
+      return {
+        status: 'submitted' as const,
+        questionId,
+        isCorrect: true,
+        result: await this.finalizeDailyQuiz(userId, quiz.id, updatedAnswers),
+      };
+    }
+
+    return {
+      status: 'in_progress' as const,
+      questionId,
+      isCorrect,
+      attemptCount: nextAttemptCount,
+      wrongAnswers: updatedEntry.wrongAnswers || [],
+      selectedAnswer: isCorrect ? answer : '',
+      message: isCorrect
+        ? `Correct on try ${nextAttemptCount}.`
+        : `Wrong answer. Try a different option. Attempt ${nextAttemptCount} saved.`,
+      progress: {
+        solvedQuestions: solvedCount,
+        totalQuestions: quiz.questions.length,
+      },
+      result: buildInProgressResult(quiz as any, updatedAnswers),
+    };
+  }
+
+  private static async recordDailyQuizAnswer(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    quiz: { id: string; questions: QuizQuestionEntity[] },
+    question: QuizQuestionEntity,
+    answer: string,
+  ) {
+    const questionId = question.id;
+    const existingAttempt = await tx.quizAttempt.findUnique({
       where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
     });
 
-    if (existingAttempt?.passed && existingAttempt.score >= quiz.questions.length) {
+    if (existingAttempt?.rewardedAt || (existingAttempt?.passed && existingAttempt.score >= quiz.questions.length)) {
       throw new Error("You have already completed today's quiz.");
     }
 
@@ -424,7 +499,7 @@ export class UserQuizService {
       .filter((item): item is PersistedQuizAnswer => Boolean(item));
 
     if (!existingAttempt) {
-      await prisma.quizAttempt.create({
+      await tx.quizAttempt.create({
         data: {
           userId,
           dailyQuizId: quiz.id,
@@ -434,7 +509,7 @@ export class UserQuizService {
         },
       });
     } else {
-      await prisma.quizAttempt.update({
+      await tx.quizAttempt.update({
         where: { id: existingAttempt.id },
         data: {
           answers: updatedAnswers,
@@ -444,51 +519,36 @@ export class UserQuizService {
       });
     }
 
-    const solvedCount = updatedAnswers.filter((item) => item.isCorrect).length;
-    const isQuizComplete = solvedCount === quiz.questions.length;
-
-    if (isQuizComplete) {
-      return {
-        status: 'submitted' as const,
-        questionId,
-        isCorrect: true,
-        result: await this.finalizeDailyQuiz(userId, quiz.id, updatedAnswers),
-      };
-    }
-
-    return {
-      status: 'in_progress' as const,
-      questionId,
-      isCorrect,
-      attemptCount: nextAttemptCount,
-      wrongAnswers: updatedEntry.wrongAnswers || [],
-      selectedAnswer: isCorrect ? answer : '',
-      message: isCorrect
-        ? `Correct on try ${nextAttemptCount}.`
-        : `Wrong answer. Try a different option. Attempt ${nextAttemptCount} saved.`,
-      progress: {
-        solvedQuestions: solvedCount,
-        totalQuestions: quiz.questions.length,
-      },
-      result: buildInProgressResult(quiz as any, updatedAnswers),
-    };
+    return { updatedAnswers, updatedEntry, nextAttemptCount, isCorrect };
   }
 
-  static async submitDailyQuiz(
-    userId: string,
-    userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
-    dateKey?: string,
-  ) {
-    const quiz = await findQuizByDate(dateKey);
+  // Finalizes a quiz the user already solved through /quiz/today/answer. Client-sent answers and
+  // attempt counts are ignored: rewards come only from the attempts the server recorded.
+  // Mainly a retry path in case finalizing after the last answer failed.
+  static async submitDailyQuiz(userId: string, dateKey?: string) {
+    const quiz = await findQuizByDate(await resolvePlayableQuizDateKey(userId, dateKey));
 
     if (!quiz) throw new Error('Quiz not found or has expired.');
-    return this.finalizeDailyQuiz(userId, quiz.id, userAnswers);
+
+    const attempt = await prisma.quizAttempt.findUnique({
+      where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
+    });
+
+    if (attempt?.rewardedAt) throw new Error("You have already completed today's quiz.");
+
+    const persistedAnswers = normalizePersistedAnswers(attempt?.answers);
+    const solvedIds = new Set(persistedAnswers.filter((item) => item.isCorrect).map((item) => item.questionId));
+    if (!attempt || quiz.questions.some((question) => !solvedIds.has(question.id))) {
+      throw new Error('Answer every question correctly before submitting.');
+    }
+
+    return this.finalizeDailyQuiz(userId, quiz.id, persistedAnswers);
   }
 
   private static async finalizeDailyQuiz(
     userId: string,
     dailyQuizId: string,
-    userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>,
+    userAnswers: PersistedQuizAnswer[],
   ) {
     const quiz = await prisma.dailyQuiz.findUnique({
       where: { id: dailyQuizId },
@@ -584,29 +644,30 @@ const rewardAllocations = allocateQuizRewardByAttempts(
       where: { userId_dailyQuizId: { userId, dailyQuizId: quiz.id } },
     });
 
+    if (!existingAttempt) throw new Error('Answer every question correctly before submitting.');
+
     const settings = await prisma.platformSettings.findFirst();
     const securityLockDays = settings?.securityLockDays || DEFAULT_SECURITY_LOCK_DAYS;
     const quizUnlockAt = getSecurityUnlockAt(securityLockDays);
 
     return await prisma.$transaction(async (tx) => {
-      const attempt = existingAttempt
-        ? await tx.quizAttempt.update({
-            where: { id: existingAttempt.id },
-            data: {
-              answers: userAnswers,
-              score,
-              passed,
-            },
-          })
-        : await tx.quizAttempt.create({
-            data: {
-              userId,
-              dailyQuizId: quiz.id,
-              answers: userAnswers,
-              score,
-              passed,
-            },
-          });
+      // One-time payout: only the request that flips rewardedAt from null may pay. A replayed or
+      // concurrent submit finds it already set and stops here.
+      const claimed = await tx.quizAttempt.updateMany({
+        where: { id: existingAttempt.id, rewardedAt: null },
+        data: {
+          answers: userAnswers,
+          score,
+          passed,
+          rewardedAt: new Date(),
+        },
+      });
+
+      if (claimed.count === 0) {
+        throw new Error("You have already completed today's quiz.");
+      }
+
+      const attempt = await tx.quizAttempt.findUniqueOrThrow({ where: { id: existingAttempt.id } });
 
       const sortedQuestions = quiz.questions.slice().sort((a, b) => a.order - b.order);
       const questionStates = sortedQuestions.map((question) => {
@@ -658,18 +719,9 @@ const rewardAllocations = allocateQuizRewardByAttempts(
           },
         });
 
-        // rewardSats/streakBonusSats/unlockAt live on QuizAttempt, not User.
-        // They were previously passed to tx.user.update, which Prisma rejects
-        // at runtime ("Unknown argument"), throwing inside the transaction and
-        // rolling back the whole zero-reward quiz submission — so the user's
-        // daily streak was never actually counted despite the success message.
         await tx.quizAttempt.update({
           where: { id: attempt.id },
-          data: {
-            rewardSats: 0,
-            streakBonusSats: 0,
-            unlockAt: null,
-          },
+          data: { rewardSats: 0, streakBonusSats: 0, unlockAt: null },
         });
 
         return {

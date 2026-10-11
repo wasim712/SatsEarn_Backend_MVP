@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { BillingCycle, BillingSource, PremiumRequestStatus, PremiumTier } from '@prisma/client';
 import { prisma } from '../../../db/prisma.client';
 import { CryptoUtil } from '../../../utils/crypto.util';
+import { signSessionToken } from '../../../utils/jwt.util';
 import { TierUtils } from '../../../utils/tier.utils';
 import { NotificationService } from '../../notifications/notification.service';
 import { PremiumInterestInput, UserProfileUpdateInput } from '../user.types';
@@ -395,8 +396,17 @@ export class UserAccountService {
       : null;
 
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
+      // Debit only if the balance still covers it and the plan state the dates above were computed
+      // from is unchanged. Parallel requests can't overdraw the balance or stack on a stale expiry.
+      const debited = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          balanceAvailable: { gte: amountSats },
+          premiumTier: user.premiumTier,
+          premiumExpiresAt: user.premiumExpiresAt,
+          queuedPremiumTier: user.queuedPremiumTier,
+          queuedPremiumExpiresAt: user.queuedPremiumExpiresAt,
+        },
         data: {
           balanceAvailable: { decrement: amountSats },
           ...(shouldQueueTier
@@ -411,6 +421,10 @@ export class UserAccountService {
               }),
         },
       });
+
+      if (debited.count === 0) {
+        throw new Error('Your balance or plan changed while upgrading. Please try again.');
+      }
 
       await tx.ledger.create({
         data: {
@@ -568,23 +582,30 @@ export class UserAccountService {
     return decryptProfileFields(updatedUser);
   }
 
-  static async changePassword(userId: string, newPassword: string) {
+  static async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, passwordHash: true },
     });
 
     if (!user) {
       throw new Error('User not found');
     }
 
+    // A stolen session token alone must not be enough to lock the owner out.
+    if (!user.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new Error('Current password is incorrect.');
+    }
+
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
+    // Bumping tokenVersion revokes every other session; this one gets a fresh token.
+    const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+      select: { id: true, role: true, tokenVersion: true },
     });
 
-    return { message: 'Password updated successfully.' };
+    return { message: 'Password updated successfully.', session: signSessionToken(updatedUser) };
   }
 
   static async deleteAccount(userId: string) {

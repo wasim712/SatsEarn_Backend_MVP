@@ -227,18 +227,24 @@ async function main() {
     updatePassword: resetAdminPassword,
   });
 
-  const saksham = await upsertUser({
-    email: 'sakshamarya015@gmail.com',
-    password: 'SecurePassword123!',
-    fullName: 'Saksham Arya',
-    username: 'saksham1',
-    referralCode: 'SAKSHAM1',
-    totalXp: 120000,
-    country: 'India',
-    premiumTier: 'CROWN',
-    premiumExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    updatePassword: true,
-  });
+  // Optional high-tier member account for local testing only. Credentials come from env so no
+  // known password is ever seeded, and it is never created against production.
+  const devMemberEmail = process.env.DEV_SEED_USER_EMAIL?.trim().toLowerCase();
+  const devMemberPassword = process.env.DEV_SEED_USER_PASSWORD?.trim();
+  const devMember = devMemberEmail && devMemberPassword && process.env.NODE_ENV !== 'production'
+    ? await upsertUser({
+        email: devMemberEmail,
+        password: devMemberPassword,
+        fullName: 'Dev Member',
+        username: 'devmember',
+        referralCode: 'DEVMEMB1',
+        totalXp: 120000,
+        country: 'India',
+        premiumTier: 'CROWN',
+        premiumExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        updatePassword: true,
+      })
+    : null;
 
   console.log('✅ Platform settings seeded');
   console.log(`✅ Admin account seeded: ${admin.email}`);
@@ -248,7 +254,7 @@ async function main() {
       : '✅ Admin password was left unchanged on existing records'
   );
   console.log(`✅ Admin referral code: ${admin.referralCode}`);
-  console.log(`✅ Member account seeded: ${saksham.email}`);
+  console.log(devMember ? `✅ Dev member account seeded: ${devMember.email}` : 'ℹ️ Dev member account skipped');
 }
 
 main()

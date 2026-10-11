@@ -15,7 +15,11 @@
     "check:referral": "ts-node scripts/check-referral-status.ts",
     "fix:negative-balances": "ts-node scripts/fix-negative-balances.ts",
     "test:campaign-max": "ts-node scripts/test-campaign-max-completions-update.ts",
-    "test:campaign-last-slot": "ts-node scripts/test-campaign-last-slot-race.ts"
+    "test:campaign-last-slot": "ts-node scripts/test-campaign-last-slot-race.ts",
+    "reencrypt:fields": "ts-node scripts/reencrypt-fields.ts",
+    "audit:quiz-replays": "ts-node scripts/audit-quiz-replays.ts",
+    "audit:xp-outliers": "ts-node scripts/audit-xp-outliers.ts",
+    "security:selfcheck": "ts-node scripts/security-selfcheck.ts"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +34,7 @@
     "@types/node": "^25.5.0",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
+    "@types/sanitize-html": "^2.16.2",
     "@types/streamifier": "^0.1.2",
     "nodemon": "^3.1.14",
     "prisma": "^7.5.0",
@@ -58,6 +63,7 @@
     "prom-client": "^15.1.3",
     "redis": "^5.11.0",
     "resend": "^6.9.4",
+    "sanitize-html": "^2.18.0",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",

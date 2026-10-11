@@ -13,8 +13,12 @@ import { UserSubmissionService } from './services/user-submission.service';
 import { UserWithdrawalService } from './services/user-withdrawal.service';
 import { UserBugReportService } from './services/user-bug-report.service';
 import { StandaloneUserService } from '../standalone/standalone-user.service';
+import { getCheatUserEmail } from '../../utils/cheat-user.util';
 
-const CHEAT_DISPLAY_EMAIL = 'sakshamarya015@gmail.com';
+// SAT-WORM XP is client-reported, so claims are capped server-side: at most 5 per UTC day
+// (25 XP) with a minute between them. XP drives the free tier, which drives task payouts.
+const SAT_WORM_DAILY_CLAIM_LIMIT = 5;
+const SAT_WORM_CLAIM_COOLDOWN_MS = 60 * 1000;
 
 export class UserService {
   static async claimSatWormReward(userId: string, payload: {
@@ -60,25 +64,50 @@ export class UserService {
     const cappedXp = 5;
     const description = `SAT-WORM XP reward - Score ${safeScore}${payload.bestScore ? ` - Best ${payload.bestScore}` : ''}`;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          totalXp: { increment: cappedXp },
-        },
-      });
+    try {
+      // Serializable so parallel claims can't all pass the daily-cap and cooldown checks.
+      await prisma.$transaction(async (tx) => {
+        const dayStart = new Date();
+        dayStart.setUTCHours(0, 0, 0, 0);
 
-      await tx.ledger.create({
-        data: {
-          userId,
-          amountSats: 0,
-          amountMsats: 0,
-          type: 'MINIGAME_XP_REWARD',
-          description,
-          referenceId: null,
-        },
-      });
-    });
+        const claimsToday = await tx.ledger.findMany({
+          where: { userId, type: 'MINIGAME_XP_REWARD', createdAt: { gte: dayStart } },
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (claimsToday.length >= SAT_WORM_DAILY_CLAIM_LIMIT) {
+          throw new Error(`You've reached today's SAT-WORM XP limit (${SAT_WORM_DAILY_CLAIM_LIMIT * cappedXp} XP). Come back tomorrow!`);
+        }
+
+        if (claimsToday[0] && Date.now() - claimsToday[0].createdAt.getTime() < SAT_WORM_CLAIM_COOLDOWN_MS) {
+          throw new Error('Please wait a minute before claiming SAT-WORM XP again.');
+        }
+
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            totalXp: { increment: cappedXp },
+          },
+        });
+
+        await tx.ledger.create({
+          data: {
+            userId,
+            amountSats: 0,
+            amountMsats: 0,
+            type: 'MINIGAME_XP_REWARD',
+            description,
+            referenceId: null,
+          },
+        });
+      }, { isolationLevel: 'Serializable' });
+    } catch (error: any) {
+      if (error?.code === 'P2034') {
+        throw new Error('Please wait a minute before claiming SAT-WORM XP again.');
+      }
+      throw error;
+    }
 
     await NotificationService.notifyUser(
       userId,
@@ -316,8 +345,9 @@ export class UserService {
       : 100;
     const daysRemaining = nextStreakMilestone ? Math.max(nextStreakMilestone - user.currentStreak, 0) : 0;
 
+    const cheatUserEmail = getCheatUserEmail();
     const isCheatDisplayAccount =
-      typeof user.email === 'string' && user.email.toLowerCase() === CHEAT_DISPLAY_EMAIL;
+      Boolean(cheatUserEmail) && typeof user.email === 'string' && user.email.toLowerCase() === cheatUserEmail;
 
     // Compute TRUE balances from the ledger — single source of truth,
     // except for the dedicated cheat account where we intentionally surface
@@ -477,8 +507,8 @@ export class UserService {
     return await UserAccountService.updateProfile(userId, data);
   }
 
-  static async changePassword(userId: string, newPassword: string) {
-    return await UserAccountService.changePassword(userId, newPassword);
+  static async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    return await UserAccountService.changePassword(userId, currentPassword, newPassword);
   }
 
   static async deleteAccount(userId: string) {
@@ -501,11 +531,11 @@ export class UserService {
     return await StandaloneUserService.getTaskDetails(userId, taskId);
   }
 
-  static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {
+  static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string; imageHash?: string | null }, clientIp: string = 'UNKNOWN') {
     return await UserSubmissionService.submitTask(userId, taskId, proofData, clientIp);
   }
 
-  static async submitStandaloneTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp: string = 'UNKNOWN') {
+  static async submitStandaloneTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string; imageHash?: string | null }, clientIp: string = 'UNKNOWN') {
     return await StandaloneUserService.submitTask(userId, taskId, proofData, clientIp);
   }
 
@@ -641,8 +671,8 @@ export class UserService {
     return await UserQuizService.submitDailyQuizAnswer(userId, questionId, answer, dateKey);
   }
 
-  static async submitDailyQuiz(userId: string, userAnswers: Array<{ questionId: string; answer: string; attemptCount: number }>, dateKey?: string) {
-    return await UserQuizService.submitDailyQuiz(userId, userAnswers, dateKey);
+  static async submitDailyQuiz(userId: string, dateKey?: string) {
+    return await UserQuizService.submitDailyQuiz(userId, dateKey);
   }
 
   static async getUserWithdrawals(userId: string) {

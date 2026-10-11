@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { FraudService } from './fraud.service'; // Make sure this file exists from our previous step!
+import { clientErrorMessage } from '../../utils/client-error.util';
 
 export class FraudController {
   
@@ -10,7 +11,7 @@ export class FraudController {
       const report = await FraudService.analyzeUserRisk(userId as string);
       res.json(report);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: clientErrorMessage(error) });
     }
   }
 
@@ -20,7 +21,7 @@ export class FraudController {
       const queue = await FraudService.getHighRiskUsers();
       res.json(queue);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: clientErrorMessage(error) });
     }
   }
 }

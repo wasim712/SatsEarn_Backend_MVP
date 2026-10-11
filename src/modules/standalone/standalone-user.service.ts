@@ -112,7 +112,7 @@ export class StandaloneUserService {
     return submission;
   }
 
-  static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string }, clientIp = 'UNKNOWN') {
+  static async submitTask(userId: string, taskId: string, proofData: { screenshotUrl?: string; proofText?: string; imageHash?: string | null }, clientIp = 'UNKNOWN') {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -150,10 +150,15 @@ export class StandaloneUserService {
         })
       : { score: 75, reason: 'Non-image proof submitted. Flagged for manual review.' };
 
-    let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
-    if (aiResult.score >= 90) determinedStatus = SubmissionStatus.PENDING_24H;
-    else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
-    else determinedStatus = SubmissionStatus.REJECTED;
+    // Same screenshot already submitted for this task by another account.
+    const duplicateImage = proofData.imageHash
+      ? Boolean(await prisma.standaloneSubmission.findFirst({
+          where: { standaloneTaskId: taskId, imageHash: proofData.imageHash, userId: { not: userId } },
+          select: { id: true },
+        }))
+      : false;
+
+    const determinedStatus: SubmissionStatus = AiVerificationService.decideStatus(aiResult.score, { duplicateImage });
 
     const workerReward = applyDoubleReward(
       getStandaloneRewardForUser(task.tierRewardMatrix, user),
@@ -168,6 +173,7 @@ export class StandaloneUserService {
             ipAddress: clientIp,
             screenshotUrl: proofData.screenshotUrl || null,
             proofText: proofData.proofText || null,
+            imageHash: proofData.imageHash || null,
             confidenceScore: aiResult.score,
             status: determinedStatus,
             rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,
@@ -182,6 +188,7 @@ export class StandaloneUserService {
             ipAddress: clientIp,
             screenshotUrl: proofData.screenshotUrl || null,
             proofText: proofData.proofText || null,
+            imageHash: proofData.imageHash || null,
             confidenceScore: aiResult.score,
             status: determinedStatus,
             rejectionReason: determinedStatus === SubmissionStatus.REJECTED ? aiResult.reason : null,

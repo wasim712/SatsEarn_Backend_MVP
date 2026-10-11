@@ -154,8 +154,8 @@ export class AdminService {
     premiumTier?: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
     premiumExpiresAt?: string | null;
     isActive?: boolean;
-  }) {
-    return await AdminUserService.updateCheatUserState(data);
+  }, actorId?: string) {
+    return await AdminUserService.updateCheatUserState(data, actorId);
   }
   static async setUserActiveState(userId: string, isActive: boolean) {
     return await AdminUserService.setUserActiveState(userId, isActive);

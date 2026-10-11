@@ -155,9 +155,12 @@ id               String   @id @default(uuid())
   isVerified       Boolean  @default(false) // Blocks login until OTP is entered
   
   // --- OTP MANAGEMENT ---
-  otpCode          String?  // Stores the 6-digit code
+  otpCode          String?  // HMAC of the 6-digit code (legacy rows: encrypted code)
   otpExpiresAt     DateTime?// Ensures the code dies after 15 minutes
-  
+  otpPurpose       String?  // SIGNUP or RESET, so one kind of code can't be used for the other
+  otpAttempts      Int      @default(0) // Wrong guesses against the current code; burned at the limit
+  tokenVersion     Int      @default(0) // Bumped on password change/reset to revoke existing JWTs
+
   avatarUrl        String?  
   phone            String?  @unique
   role             Role     @default(USER)
@@ -556,6 +559,7 @@ model QuizAttempt {
   streakBonusSats  Int       @default(0)
   unlockAt         DateTime?
   rewardUnlockedAt DateTime?
+  rewardedAt       DateTime? // Set once when the reward is paid; guards against replayed submits
 
   createdAt        DateTime  @default(now())
 

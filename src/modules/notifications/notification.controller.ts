@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { NotificationService } from './notification.service';
+import { clientErrorMessage } from '../../utils/client-error.util';
 
 export class NotificationController {
   
@@ -8,14 +9,14 @@ export class NotificationController {
     try {
       const data = await NotificationService.getUserNotifications(req.user!.id);
       res.json(data);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
+    } catch (e: any) { res.status(400).json({ error: clientErrorMessage(e) }); }
   }
 
   static async markAllMyRead(req: Request, res: Response) {
     try {
       await NotificationService.markAllUserRead(req.user!.id);
       res.json({ success: true });
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
+    } catch (e: any) { res.status(400).json({ error: clientErrorMessage(e) }); }
   }
 
   // ─── ADMIN CONTROLLERS ───
@@ -23,14 +24,14 @@ export class NotificationController {
     try {
       const data = await NotificationService.getAdminNotifications();
       res.json(data);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
+    } catch (e: any) { res.status(400).json({ error: clientErrorMessage(e) }); }
   }
 
   static async markAllAdminRead(req: Request, res: Response) {
     try {
       await NotificationService.markAllAdminRead();
       res.json({ success: true });
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
+    } catch (e: any) { res.status(400).json({ error: clientErrorMessage(e) }); }
   }
 
   // ─── SHARED CONTROLLER (Single Read) ───
@@ -41,6 +42,6 @@ export class NotificationController {
       
       await NotificationService.markAsRead(req.params.id as string, userId);
       res.json({ success: true });
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
+    } catch (e: any) { res.status(400).json({ error: clientErrorMessage(e) }); }
   }
 }

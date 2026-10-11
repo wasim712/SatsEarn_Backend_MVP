@@ -48,7 +48,7 @@ export class UserSubmissionService {
   static async submitTask(
     userId: string,
     taskId: string,
-    proofData: { screenshotUrl?: string; proofText?: string },
+    proofData: { screenshotUrl?: string; proofText?: string; imageHash?: string | null },
     clientIp: string = 'UNKNOWN',
   ) {
     const settings = (await prisma.platformSettings.findFirst()) || {
@@ -95,13 +95,20 @@ export class UserSubmissionService {
     }
 
     const rulesContext = task.requirements || task.description || task.campaign.description;
-    const proofContent = proofData.screenshotUrl || proofData.proofText || '';
-    const aiResult = await AiVerificationService.analyzeProof(proofContent, rulesContext);
+    // Only the screenshot we uploaded is analysed. Typed text/URLs are never fetched (SSRF) and go to a human.
+    const aiResult = proofData.screenshotUrl
+      ? await AiVerificationService.analyzeProof(proofData.screenshotUrl, rulesContext)
+      : { score: 75, reason: 'Non-image proof submitted. Flagged for manual review.' };
 
-    let determinedStatus: SubmissionStatus = SubmissionStatus.PENDING_24H;
-    if (aiResult.score >= 90) determinedStatus = SubmissionStatus.PENDING_24H;
-    else if (aiResult.score >= 70) determinedStatus = SubmissionStatus.MANUAL_REVIEW;
-    else determinedStatus = SubmissionStatus.REJECTED;
+    // Same screenshot already submitted for this task by another account.
+    const duplicateImage = proofData.imageHash
+      ? Boolean(await prisma.submission.findFirst({
+          where: { taskId, imageHash: proofData.imageHash, userId: { not: userId } },
+          select: { id: true },
+        }))
+      : false;
+
+    const determinedStatus: SubmissionStatus = AiVerificationService.decideStatus(aiResult.score, { duplicateImage });
 
     recordTaskSubmission(
       determinedStatus === SubmissionStatus.PENDING_24H
@@ -159,6 +166,7 @@ export class UserSubmissionService {
               data: {
                 screenshotUrl: proofData.screenshotUrl || null,
                 proofText: proofData.proofText || null,
+                imageHash: proofData.imageHash || null,
                 ipAddress: clientIp,
                 confidenceScore: aiResult.score,
                 status: determinedStatus,
@@ -174,6 +182,7 @@ export class UserSubmissionService {
                 taskId,
                 screenshotUrl: proofData.screenshotUrl || null,
                 proofText: proofData.proofText || null,
+                imageHash: proofData.imageHash || null,
                 ipAddress: clientIp,
                 confidenceScore: aiResult.score,
                 status: determinedStatus,

@@ -43,9 +43,10 @@ export const validate =
         });
       }
 
+      console.error('Validation middleware failed:', error);
       return res.status(500).json({
-        error: 'Internal Server Error in Middleware',
-        message: error.message,
+        error: 'Internal Server Error',
+        message: 'An unexpected error occurred.',
       });
     }
   };

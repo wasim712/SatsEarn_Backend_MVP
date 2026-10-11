@@ -13,9 +13,10 @@ export const errorHandler = (
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
       case 'P2002': // Unique constraint failed (e.g., duplicate email)
+        // Don't echo err.meta.target: it names internal columns and constraints.
         return res.status(409).json({
           error: 'Conflict',
-          message: `A record with this ${err.meta?.target} already exists.`,
+          message: 'A record with these details already exists.',
         });
       case 'P2025': // Record not found
         return res.status(404).json({
@@ -28,7 +29,7 @@ export const errorHandler = (
           message: 'This operation violates database relationships (Foreign Key error).',
         });
       default:
-        return res.status(500).json({ error: 'Database Error', code: err.code });
+        return res.status(500).json({ error: 'Database Error', message: 'An unexpected error occurred.' });
     }
   }
 
@@ -37,10 +38,18 @@ export const errorHandler = (
     return res.status(400).json({ error: 'Validation Error', details: err.errors });
   }
 
-  // 3. Fallback for everything else
+  // 3. Fallback for everything else. Deliberate 4xx errors keep their message; 5xx details
+  // (library errors, stack-ish messages) stay in the server log.
   const statusCode = err.statusCode || 500;
+  if (statusCode >= 500) {
+    return res.status(statusCode).json({
+      error: 'Internal Server Error',
+      message: 'An unexpected error occurred.',
+    });
+  }
+
   res.status(statusCode).json({
-    error: err.name || 'Internal Server Error',
-    message: err.message || 'An unexpected error occurred.',
+    error: err.name || 'Bad Request',
+    message: err.message || 'The request could not be processed.',
   });
 };

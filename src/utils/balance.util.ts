@@ -10,7 +10,7 @@ import { prisma } from '../db/prisma.client';
  * balanceAvailable) are treated as a performance cache and reconciled
  * periodically by the cron job.
  */
-export async function computeUserBalances(userId: string) {
+export async function computeUserBalances(userId: string, options: { clamp?: boolean } = {}) {
   // Fetch all ledger entries for this user in one query
   const ledgerEntries = await prisma.ledger.findMany({
     where: { userId },
@@ -230,6 +230,11 @@ export async function computeUserBalances(userId: string) {
         break;
       }
     }
+  }
+
+  // Raw values let callers see a real debt (e.g. spending more than was available).
+  if (options.clamp === false) {
+    return { pending, locked, available };
   }
 
   // Ensure no bucket goes negative due to rounding or edge cases

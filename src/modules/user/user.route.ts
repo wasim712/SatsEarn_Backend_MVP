@@ -3,10 +3,12 @@ import { Router } from 'express';
 import { prisma } from '../../db/prisma.client';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { decryptObfuscatedMultipart } from '../../middlewares/obfuscation.middleware';
+import { userLimiter, userLimits } from '../../middlewares/rate-limit';
 import { validate } from '../../middlewares/validate.middleware';
 import { NotificationController } from '../notifications/notification.controller';
 import { UserController } from './user.controller';
 import {
+  changePasswordSchema,
   claimSatWormRewardSchema,
   premiumInterestSchema,
   premiumSatsUpgradeSchema,
@@ -25,6 +27,8 @@ const upload = multer({
 });
 
 router.use(requireAuth);
+// Broad per-user ceiling; money-touching routes below also get their own tighter limits.
+router.use(userLimiter('users-api', 15 * 60 * 1000, 1500));
 
 router.get('/profile', UserController.getProfile);
 router.post('/onboarding/complete', UserController.completeOnboarding);
@@ -32,10 +36,10 @@ router.post('/onboarding/skip', UserController.skipOnboarding);
 router.patch('/profile', validate(updateProfileSchema), UserController.updateProfile);
 router.get('/premium-interest', UserController.getPremiumRequests);
 router.post('/premium-interest', validate(premiumInterestSchema), UserController.registerPremiumInterest);
-router.post('/premium-upgrade/sats', validate(premiumSatsUpgradeSchema), UserController.upgradePremiumUsingSats);
+router.post('/premium-upgrade/sats', userLimits.premiumUpgrade, validate(premiumSatsUpgradeSchema), UserController.upgradePremiumUsingSats);
 router.get('/dashboard', UserController.getDashboard);
 router.get('/leaderboard', UserController.getLeaderboard);
-router.post('/change-password', UserController.changePassword);
+router.post('/change-password', userLimits.changePassword, validate(changePasswordSchema), UserController.changePassword);
 router.delete('/account', UserController.deleteAccount);
 
 router.get('/settings', async (_req, res) => {
@@ -85,11 +89,11 @@ router.get('/campaigns', UserController.getCampaigns);
 router.get('/standalone-tasks', UserController.getStandaloneTasks);
 router.get('/standalone-tasks/:taskId', UserController.getStandaloneTaskDetails);
 router.get('/standalone-tasks/:taskId/status', UserController.getStandaloneTaskStatus);
-router.post('/standalone-tasks/:taskId/submit', upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitStandaloneTaskProof);
+router.post('/standalone-tasks/:taskId/submit', userLimits.taskSubmit, upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitStandaloneTaskProof);
 router.get('/campaigns/:id', UserController.getCampaignDetails);
 router.get('/tasks/:taskId/status', UserController.getTaskStatus);
 
-router.post('/tasks/:taskId/submit', upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitTaskProof);
+router.post('/tasks/:taskId/submit', userLimits.taskSubmit, upload.single('proofImage'), decryptObfuscatedMultipart, UserController.submitTaskProof);
 router.post('/tasks/:taskId/quiz', validate(submitQuizSchema), UserController.submitQuiz);
 router.post('/tasks/:taskId/start', UserController.startTask);
 
@@ -103,13 +107,13 @@ router.get('/faqs', UserController.getActiveFaqs);
 router.post('/bug-reports', upload.single('screenshot'), decryptObfuscatedMultipart, validate(submitBugReportSchema), UserController.submitBugReport);
 
 router.post('/streak/claim', UserController.claimStreak);
-router.post('/minigames/sat-worm/claim', validate(claimSatWormRewardSchema), UserController.claimSatWormReward);
+router.post('/minigames/sat-worm/claim', userLimits.minigameClaim, validate(claimSatWormRewardSchema), UserController.claimSatWormReward);
 router.get('/quiz/today', UserController.getTodayQuiz);
-router.post('/quiz/today/answer', validate(submitDailyQuizAnswerSchema), UserController.submitTodayQuizAnswer);
-router.post('/quiz/today/submit', validate(submitDailyQuizSchema), UserController.submitTodayQuiz);
+router.post('/quiz/today/answer', userLimits.quizAnswer, validate(submitDailyQuizAnswerSchema), UserController.submitTodayQuizAnswer);
+router.post('/quiz/today/submit', userLimits.quizSubmit, validate(submitDailyQuizSchema), UserController.submitTodayQuiz);
 
 router.get('/withdrawals', UserController.getWithdrawals);
-router.post('/withdrawals', validate(requestWithdrawalSchema), UserController.requestWithdrawal);
+router.post('/withdrawals', userLimits.withdrawal, validate(requestWithdrawalSchema), UserController.requestWithdrawal);
 
 router.get('/notifications', NotificationController.getMyNotifications);
 router.put('/notifications/read-all', NotificationController.markAllMyRead);

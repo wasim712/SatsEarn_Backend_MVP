@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { env } from './config/env';
 import { httpMetricsMiddleware } from './monitoring/http-metrics.middleware';
 import metricsRoutes from './monitoring/metrics.routes';
 import { decryptObfuscatedJson, encryptObfuscatedResponse } from './middlewares/obfuscation.middleware';
@@ -16,7 +17,10 @@ import userRoutes from './modules/user/user.route';
 const app = express();
 
 app.use(helmet());
-// app.set('trust proxy', true);
+// Number of reverse proxies in front of the API. Without it, req.ip is the load balancer for every
+// user, so per-IP rate limits become one shared bucket and fraud IP signals record the proxy.
+// Never set this higher than the real hop count, or clients can spoof X-Forwarded-For.
+app.set('trust proxy', env.TRUST_PROXY_HOPS ?? (env.NODE_ENV === 'production' ? 1 : 0));
 
 const allowedOrigins = [
   process.env.CLIENT_URL,

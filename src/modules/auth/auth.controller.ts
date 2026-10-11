@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
+import { clientErrorMessage } from '../../utils/client-error.util';
 
 const isDatabaseConnectionError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
@@ -21,8 +22,7 @@ const handleAuthError = (res: Response, error: unknown) => {
     });
   }
 
-  const message = error instanceof Error ? error.message : 'Unknown error';
-  return res.status(400).json({ error: message });
+  return res.status(400).json({ error: clientErrorMessage(error) });
 };
 
 export class AuthController {
@@ -45,8 +45,8 @@ export class AuthController {
 
   static async verifyOtp(req: Request, res: Response) {
     try {
-      const { email, token } = req.body;
-      const result = await AuthService.verifyOtp(email, token);
+      const { email, token, password } = req.body;
+      const result = await AuthService.verifyOtp(email, token, password);
       res.status(200).json(result);
     } catch (error) {
       handleAuthError(res, error);

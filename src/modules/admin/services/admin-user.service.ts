@@ -4,14 +4,18 @@ import { NotificationService } from '../../notifications/notification.service';
 import { CryptoUtil } from '../../../utils/crypto.util';
 import { TierUtils } from '../../../utils/tier.utils';
 import { computeUserBalances } from '../../../utils/balance.util';
-
-const CHEAT_USER_EMAIL = 'sakshamarya015@gmail.com';
+import { getCheatUserEmail } from '../../../utils/cheat-user.util';
 
 async function findCheatUserIdentity() {
+  const cheatUserEmail = getCheatUserEmail();
+  if (!cheatUserEmail) {
+    throw new Error('Cheat user tools are disabled.');
+  }
+
   const user = await prisma.user.findFirst({
     where: {
       email: {
-        equals: CHEAT_USER_EMAIL,
+        equals: cheatUserEmail,
         mode: 'insensitive',
       },
     },
@@ -19,7 +23,7 @@ async function findCheatUserIdentity() {
   });
 
   if (!user) {
-    throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+    throw new Error(`Cheat user ${cheatUserEmail} not found.`);
   }
 
   return user;
@@ -110,7 +114,7 @@ export class AdminUserService {
       },
     });
 
-    if (!user) throw new Error(`Cheat user ${CHEAT_USER_EMAIL} not found.`);
+    if (!user) throw new Error(`Cheat user ${cheatUser.email} not found.`);
 
     const isPremium = TierUtils.isPremiumActive(user as any);
     const freeTier = TierUtils.getFreeTier(user.totalXp);
@@ -135,8 +139,18 @@ export class AdminUserService {
     premiumTier?: 'PLATINUM' | 'DIAMOND' | 'CROWN' | 'ELITE' | 'FOUNDER' | null;
     premiumExpiresAt?: string | null;
     isActive?: boolean;
-  }) {
+  }, actorId?: string) {
     const existing = await findCheatUserIdentity();
+
+    // These writes bypass the ledger, so keep an audit trail of who changed what.
+    const changes = Object.entries(data).filter(([, value]) => value !== undefined);
+    console.warn(`[AUDIT] Cheat user ${existing.email} edited by admin ${actorId || 'unknown'}: ${JSON.stringify(Object.fromEntries(changes))}`);
+    await NotificationService.notifyAdmins(
+      'Cheat user edited',
+      `Admin ${actorId || 'unknown'} set ${changes.map(([key, value]) => `${key}=${value}`).join(', ') || 'nothing'} on ${existing.email} at ${new Date().toISOString()} (no ledger entry).`,
+      'SYSTEM_ALERT',
+      existing.id,
+    );
 
     await prisma.user.update({
       where: { id: existing.id },

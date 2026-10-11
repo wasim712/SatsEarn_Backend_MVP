@@ -1,4 +1,5 @@
 import { prisma } from '../../../db/prisma.client';
+import { sanitizeBlogHtml, sanitizeBlogPost } from '../../../utils/html-sanitize.util';
 
 export class AdminBlogService {
   static async createBlogPost(data: {
@@ -14,7 +15,7 @@ export class AdminBlogService {
         title: data.title,
         slug: data.slug,
         excerpt: data.excerpt || null,
-        content: data.content,
+        content: sanitizeBlogHtml(data.content),
         coverImageUrl: data.coverImageUrl || null,
         isPublished: Boolean(data.isPublished),
         publishedAt: data.isPublished ? new Date() : null,
@@ -23,9 +24,10 @@ export class AdminBlogService {
   }
 
   static async getAllBlogPosts() {
-    return prisma.blogPost.findMany({
+    const posts = await prisma.blogPost.findMany({
       orderBy: { createdAt: 'desc' },
     });
+    return posts.map(sanitizeBlogPost);
   }
 
   static async updateBlogPost(id: string, data: {
@@ -45,6 +47,7 @@ export class AdminBlogService {
       where: { id },
       data: {
         ...data,
+        content: data.content !== undefined ? sanitizeBlogHtml(data.content) : undefined,
         excerpt: data.excerpt !== undefined ? data.excerpt || null : undefined,
         coverImageUrl: data.coverImageUrl !== undefined ? data.coverImageUrl || null : undefined,
         publishedAt: nextPublished ? current.publishedAt || new Date() : null,

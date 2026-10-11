@@ -1,4 +1,5 @@
 import z from "zod";
+import { strongPasswordSchema } from "../auth/auth.schema";
 
 export const updateProfileSchema = z.object({
   body: z.object({
@@ -12,11 +13,10 @@ export const updateProfileSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  newPassword: z.string()
-    .min(8, "Password must be at least 8 characters long")
-    .regex(/[a-zA-Z]/, "Password must contain at least one letter")
-    .regex(/[0-9]/, "Password must contain at least one number")
-    .regex(/[\W_]/, "Password must contain at least one special character"),
+  body: z.object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: strongPasswordSchema,
+  }),
 });
 
 export const startTaskParamSchema = z.object({
@@ -42,16 +42,11 @@ export const submitDailyQuizAnswerSchema = z.object({
   }),
 });
 
+// Answers are recorded one at a time through /quiz/today/answer; this only finalizes them.
+// Any `answers` sent by older clients are ignored.
 export const submitDailyQuizSchema = z.object({
   body: z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
-    answers: z.array(
-      z.object({
-        questionId: z.string().uuid("Invalid Question ID format"),
-        answer: z.string().min(1, "Answer cannot be empty"),
-        attemptCount: z.number().int("Attempt count must be a whole number").min(1, "Attempt count must be at least 1"),
-      }),
-    ).min(1, "You must submit at least one answer"),
   }),
 });
 
@@ -60,6 +55,7 @@ export const requestWithdrawalSchema = z.object({
     amountSats: z.number().int("Amount must be a whole number").positive("Amount must be greater than 0"),
     lightningInvoice: z.string()
       .min(10, "Invoice is too short")
+      .max(4000, "Invoice is too long")
       .refine((val) => val.toLowerCase().startsWith('lnbc') || val.toLowerCase().startsWith('lntb'), {
         message: "Invoice must be a valid Lightning Network invoice starting with 'lnbc' or 'lntb'.",
       }),

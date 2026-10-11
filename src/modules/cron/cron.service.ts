@@ -367,8 +367,11 @@ export class CronService {
   /**
    * Reconciles balances for users with negative stored values.
    * Uses computeUserBalances (the single source of truth) to derive
-   * the correct values from the ledger + submission statuses, then
-   * overwrites the corrupted denormalized fields.
+   * the correct values from the ledger + submission statuses.
+   * A bucket is only resynced when the ledger says it should be >= 0 (the cached
+   * field drifted). When the ledger itself is negative the user really spent more
+   * than they had, so the debt is left in place and flagged for admin review instead
+   * of being wiped to zero.
    */
   static async reconcileNegativeBalances() {
     const corruptedUsers = await prisma.user.findMany({
@@ -387,19 +390,38 @@ export class CronService {
     }
 
     let reconciledCount = 0;
+    let flaggedCount = 0;
 
     for (const user of corruptedUsers) {
-      const computed = await computeUserBalances(user.id);
+      const computed = await computeUserBalances(user.id, { clamp: false });
 
       const updates: Record<string, number> = {};
-      if (user.balancePending < 0) {
-        updates.balancePending = computed.pending;
+      const debts: string[] = [];
+      const buckets = [
+        { field: 'balancePending', label: 'pending', stored: user.balancePending, ledger: computed.pending },
+        { field: 'balanceLocked', label: 'locked', stored: user.balanceLocked, ledger: computed.locked },
+        { field: 'balanceAvailable', label: 'available', stored: user.balanceAvailable, ledger: computed.available },
+      ];
+
+      for (const bucket of buckets) {
+        if (bucket.stored >= 0) continue;
+
+        if (bucket.ledger >= 0) {
+          updates[bucket.field] = bucket.ledger;
+        } else {
+          debts.push(`${bucket.label} ${bucket.ledger}`);
+        }
       }
-      if (user.balanceLocked < 0) {
-        updates.balanceLocked = computed.locked;
-      }
-      if (user.balanceAvailable < 0) {
-        updates.balanceAvailable = computed.available;
+
+      if (debts.length > 0) {
+        flaggedCount++;
+        console.warn(`[RECONCILE] User ${user.id} has a ledger debt (${debts.join(', ')} sats); left negative for review.`);
+        await NotificationService.notifyAdmins(
+          'Negative balance needs review',
+          `User ${user.id} has spent more than they had per the ledger (${debts.join(', ')} sats). The balance was left negative; review before any payout.`,
+          'SYSTEM_ALERT',
+          user.id,
+        );
       }
 
       if (Object.keys(updates).length > 0) {
@@ -420,7 +442,7 @@ export class CronService {
 
     return {
       success: true,
-      message: `Reconciled ${reconciledCount} user(s) with corrupted balances.`,
+      message: `Reconciled ${reconciledCount} user(s) with corrupted balances; flagged ${flaggedCount} with ledger debt for review.`,
     };
   }
 
